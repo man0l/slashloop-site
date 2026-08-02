@@ -6,6 +6,8 @@ import Home from "./pages/Home.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import Login from "./pages/Login.jsx";
 import Account from "./pages/Account.jsx";
+import Sources from "./pages/Sources.jsx";
+import Gallery from "./pages/Gallery.jsx";
 import BillingSuccess from "./pages/BillingSuccess.jsx";
 import BillingCancel from "./pages/BillingCancel.jsx";
 
@@ -30,7 +32,15 @@ function Nav() {
           Pricing
         </Link>
         {loading ? null : user ? (
-          <CTAButton to="/account">Account</CTAButton>
+          <>
+            <Link to="/sources" className="hidden sm:inline" style={{ ...fM, fontSize: 13, color: T.ink }}>
+              Sources
+            </Link>
+            <Link to="/gallery" className="hidden sm:inline" style={{ ...fM, fontSize: 13, color: T.ink }}>
+              Gallery
+            </Link>
+            <CTAButton to="/account">Account</CTAButton>
+          </>
         ) : (
           <>
             <GhostButton to="/login">Sign in</GhostButton>
@@ -68,6 +78,8 @@ export default function App() {
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/sources" element={<Sources />} />
+        <Route path="/gallery" element={<Gallery />} />
         <Route path="/billing/success" element={<BillingSuccess />} />
         <Route path="/billing/cancel" element={<BillingCancel />} />
       </Routes>
