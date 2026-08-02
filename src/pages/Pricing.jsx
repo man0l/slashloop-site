@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
+import CreditTopUp from "../components/CreditTopUp.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { createCheckoutSession, BillingApiError } from "../lib/api.js";
 
@@ -110,6 +111,35 @@ function PlanCard({ plan, interval }) {
   );
 }
 
+function BuyMoreCredits() {
+  const { user, accessToken } = useAuth();
+
+  return (
+    <div
+      className="mt-8 rounded-xl p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5"
+      style={{ background: T.card, border: `1px solid ${T.line}` }}
+    >
+      <div>
+        <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.signal }}>NEED MORE CREDITS?</div>
+        <h2 className="mt-2" style={{ ...fD, fontWeight: 800, fontSize: 22, letterSpacing: -0.5 }}>
+          Top up anytime
+        </h2>
+        <p className="mt-1.5" style={{ fontSize: 14, lineHeight: 1.55, color: "#3A424B", maxWidth: 420 }}>
+          Buy credits without a subscription bump — they go into the same balance and never expire
+          while your account is active.
+        </p>
+      </div>
+      <div className="shrink-0">
+        {!user ? (
+          <CTAButton big to="/login?next=/pricing">Sign in to buy →</CTAButton>
+        ) : (
+          <CreditTopUp accessToken={accessToken} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Pricing() {
   const [interval, setInterval_] = useState("month");
 
@@ -149,10 +179,7 @@ export default function Pricing() {
         ))}
       </div>
 
-      <div className="mt-5" style={{ ...fM, fontSize: 12, color: T.muted }}>
-        Need more without a subscription bump? Top-up packs: 5,000 credits for $49, never expire
-        while your account is active.
-      </div>
+      <BuyMoreCredits />
 
       <div className="mt-16">
         <SectionLabel>WHAT A CREDIT BUYS</SectionLabel>

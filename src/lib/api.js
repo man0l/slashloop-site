@@ -45,12 +45,15 @@ async function billingFetch(path, { method = "GET", accessToken, body } = {}) {
   return res.json();
 }
 
-/** POST /api/billing/checkout -> { url }. planKey: "creator" | "pro". interval: "month" | "year". */
-export function createCheckoutSession(accessToken, { planKey, interval } = {}) {
+/**
+ * POST /api/billing/checkout -> { url }.
+ * planKey: "creator" | "pro" (interval: "month" | "year") | "pack" (amountCents: integer, $10 min).
+ */
+export function createCheckoutSession(accessToken, { planKey, interval, amountCents } = {}) {
   return billingFetch("/api/billing/checkout", {
     method: "POST",
     accessToken,
-    body: { planKey, interval },
+    body: { planKey, interval, amountCents },
   });
 }
 

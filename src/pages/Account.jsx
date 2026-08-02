@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
+import CreditTopUp from "../components/CreditTopUp.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { getBillingStatus, createPortalSession, BillingApiError } from "../lib/api.js";
 
@@ -78,6 +79,14 @@ export default function Account() {
             {portalStatus === "loading" ? "Opening…" : "Manage billing"}
           </CTAButton>
         </div>
+
+        <div className="mt-6 pt-6" style={{ borderTop: `1px solid ${T.line}` }}>
+          <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>TOP UP CREDITS</div>
+          <div className="mt-2">
+            <CreditTopUp accessToken={accessToken} />
+          </div>
+        </div>
+
         {portalStatus === "error" && (
           <p className="mt-2" style={{ ...fM, fontSize: 12, color: "#B3261E" }}>
             Couldn't open the billing portal. Try again shortly.
