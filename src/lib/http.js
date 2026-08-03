@@ -7,10 +7,11 @@
 const MCP_URL = (import.meta.env.VITE_MCP_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, code) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -38,9 +39,13 @@ export async function apiFetch(path, { method = "GET", accessToken, body } = {})
         404,
       );
     }
-    let detail = "";
-    try { detail = (await res.json())?.error ?? ""; } catch { /* not JSON */ }
-    throw new ApiError(detail || `Request failed (${res.status})`, res.status);
+    let payload;
+    try { payload = await res.json(); } catch { /* not JSON */ }
+    // Servers send a human `message` alongside the machine-readable `error`
+    // code (e.g. "workspace_limit_reached") — prefer the former for display,
+    // keep the code around for callers that want to branch on it.
+    const detail = payload?.message || payload?.error || "";
+    throw new ApiError(detail || `Request failed (${res.status})`, res.status, payload?.error);
   }
 
   return res.json();

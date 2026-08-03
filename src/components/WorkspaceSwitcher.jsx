@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { T, fB, fM } from "../lib/theme.js";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { WorkspacesApiError } from "../lib/workspaces.js";
@@ -19,12 +20,14 @@ export default function WorkspaceSwitcher() {
   const [name, setName] = useState("");
   const [createStatus, setCreateStatus] = useState("idle"); // idle | loading | error
   const [createError, setCreateError] = useState("");
+  const [createErrorCode, setCreateErrorCode] = useState("");
 
   async function submitCreate(e) {
     e.preventDefault();
     if (!name.trim()) return;
     setCreateStatus("loading");
     setCreateError("");
+    setCreateErrorCode("");
     try {
       await createWorkspace(name.trim());
       setName("");
@@ -32,7 +35,8 @@ export default function WorkspaceSwitcher() {
       setCreateStatus("idle");
     } catch (err) {
       setCreateStatus("error");
-      setCreateError(err instanceof WorkspacesApiError ? err.message : "Couldn't create workspace.");
+      setCreateError(err instanceof WorkspacesApiError ? err.message : "Couldn't create workspace — try again in a moment.");
+      setCreateErrorCode(err instanceof WorkspacesApiError ? err.code : "");
     }
   }
 
@@ -79,7 +83,7 @@ export default function WorkspaceSwitcher() {
           </button>
           <button
             type="button"
-            onClick={() => { setCreating(false); setCreateError(""); }}
+            onClick={() => { setCreating(false); setCreateError(""); setCreateErrorCode(""); }}
             style={{ ...fB, fontSize: 12, color: T.muted }}
           >
             Cancel
@@ -88,7 +92,24 @@ export default function WorkspaceSwitcher() {
       )}
 
       {(error || createError) && (
-        <p style={{ ...fM, fontSize: 12, color: "#B3261E" }}>{createError || error}</p>
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md px-3 py-2 w-full basis-full"
+          style={{ background: "#FDECEA", border: "1px solid #F3B5AE" }}
+        >
+          <span style={{ ...fB, fontSize: 13, lineHeight: 1.4, color: "#7A1F17" }}>
+            {createError || error}
+          </span>
+          {createErrorCode === "workspace_limit_reached" && (
+            <Link
+              to="/pricing"
+              className="shrink-0"
+              style={{ ...fM, fontSize: 12, color: T.signal, textDecoration: "underline" }}
+            >
+              Upgrade →
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );
