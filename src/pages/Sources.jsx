@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, ConfirmDialog } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
@@ -149,16 +149,27 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
         {busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}
       </td>
       <td className="py-3">
-        <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={doRefresh} style={{ ...fM, fontSize: 11, color: T.signal }}>
-            {busyAction === "refresh" ? "refreshing…" : "refresh"}
-          </button>
-          <button type="button" disabled={busy} onClick={toggleActive} style={{ ...fM, fontSize: 11, color: T.ink }}>
-            {busyAction === "toggle" ? "…" : source.isActive ? "pause" : "resume"}
-          </button>
-          <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} style={{ ...fM, fontSize: 11, color: T.muted }}>
-            delete
-          </button>
+        <div className="flex items-center gap-1">
+          <IconButton
+            icon={<RefreshIcon />}
+            label={busyAction === "refresh" ? "Refreshing…" : "Refresh now"}
+            disabled={busy}
+            tone={T.signal}
+            onClick={doRefresh}
+          />
+          <IconButton
+            icon={source.isActive ? <PauseIcon /> : <PlayIcon />}
+            label={source.isActive ? "Pause tracking" : "Resume tracking"}
+            disabled={busy}
+            onClick={toggleActive}
+          />
+          <IconButton
+            icon={<TrashIcon />}
+            label="Delete source"
+            disabled={busy}
+            danger
+            onClick={() => setConfirmDelete(true)}
+          />
         </div>
       </td>
       <ConfirmDialog

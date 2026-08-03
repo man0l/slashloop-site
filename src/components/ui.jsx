@@ -36,6 +36,69 @@ export function GhostButton({ to, onClick, children }) {
 }
 
 /**
+ * A small icon-only control with a proper (styled, hover-revealed) tooltip —
+ * for dense row actions where a text label per action doesn't fit the row.
+ * The tooltip is a sibling span shown on `:hover`/`:focus` via a `group`
+ * wrapper, not the native `title` attribute, so it can be styled and shows
+ * up immediately rather than after the browser's default delay.
+ */
+export function IconButton({ icon, label, onClick, disabled, tone, danger }) {
+  return (
+    <span className="relative inline-flex group">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className="inline-flex items-center justify-center rounded-md p-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-black/5"
+        style={{ color: danger ? "#B3261E" : tone ?? T.ink }}
+      >
+        {icon}
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-2 py-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 z-10"
+        style={{ ...fM, fontSize: 11, background: T.ink, color: "#fff" }}
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
+const ICON_PROPS = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+
+export const RefreshIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <path d="M21 12a9 9 0 1 1-3-6.7" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);
+
+export const PauseIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </svg>
+);
+
+export const PlayIcon = () => (
+  <svg {...ICON_PROPS} fill="currentColor" stroke="none" aria-hidden="true">
+    <polygon points="6 4 20 12 6 20" />
+  </svg>
+);
+
+export const TrashIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <path d="M3 6h18" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
+
+/**
  * Error/status banner for the outcome of an action (create, delete,
  * refresh, ...) — a bordered card instead of a bare line of red text, so
  * it reads as a notification rather than stray text near the controls.
