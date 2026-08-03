@@ -36,6 +36,10 @@ export function AuthProvider({ children }) {
       supabaseConfigured
         ? supabase.auth.signUp({ email, password })
         : Promise.resolve({ data: null, error: NOT_CONFIGURED_ERROR }),
+    signInWithOAuth: (provider, redirectTo) =>
+      supabaseConfigured
+        ? supabase.auth.signInWithOAuth({ provider, options: { redirectTo } })
+        : Promise.resolve({ data: null, error: NOT_CONFIGURED_ERROR }),
     signOut: () => (supabaseConfigured ? supabase.auth.signOut() : Promise.resolve({ error: null })),
   };
 
