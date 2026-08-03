@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
-import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, SourcesApiError } from "../lib/sources.js";
+import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, SourcesApiError } from "../lib/sources.js";
 import { getGallery } from "../lib/gallery.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
@@ -45,9 +45,25 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
     try {
       // TikTok only — the connector refuses reels/shorts today (no live
       // scraper for either), so the form never offers them.
-      await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: query.trim(), videoLimit });
+      const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: query.trim(), videoLimit });
       setQuery("");
-      showToast(`Now tracking ${query.trim()}.`, { type: "success" });
+
+      // A newly tracked source with no videos yet just reads as broken
+      // ("never" in LAST REFRESH) until someone notices and clicks Refresh —
+      // this is what the MCP conversational flow already does by default
+      // (create_source chained straight into refresh_source, see
+      // .claude/skills/track/SKILL.md), the site just wasn't doing it too.
+      try {
+        await refreshSource(accessToken, workspaceId, source.id);
+        showToast(`Now tracking ${query.trim()} — first scrape queued.`, { type: "success" });
+      } catch (refreshErr) {
+        showToast(
+          `Tracking ${query.trim()}, but the first scrape didn't start: `
+          + (refreshErr instanceof SourcesApiError ? refreshErr.message : "couldn't queue refresh.")
+          + " Use Refresh to retry.",
+          { type: "error" },
+        );
+      }
       onCreated();
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't create source.", { type: "error" });
@@ -97,12 +113,228 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   );
 }
 
+/**
+ * AI-seeded suggestions, seeded from this workspace's biggest outliers and
+ * verified against one real (small) Apify scrape per candidate server-side
+ * — every card shown here already proved it has real videos behind it.
+ */
+function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
+  const { showToast } = useToast();
+  const [status, setStatus] = useState("idle"); // idle | loading | done | error
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [trackedQueries, setTrackedQueries] = useState(new Set());
+  const [trackingQuery, setTrackingQuery] = useState(null);
+
+  async function runSuggest() {
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const r = await suggestSources(accessToken, workspaceId);
+      setResult(r);
+      setTrackedQueries(new Set());
+      setStatus("done");
+    } catch (err) {
+      setErrorMsg(err instanceof SourcesApiError ? err.message : "Couldn't generate suggestions.");
+      setStatus("error");
+    }
+  }
+
+  async function trackSuggestion(s) {
+    setTrackingQuery(s.query);
+    try {
+      const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType: s.sourceType, query: s.query, videoLimit: 20 });
+      try {
+        await refreshSource(accessToken, workspaceId, source.id);
+      } catch {
+        // Source is tracked either way; the row's own Refresh button covers a retry.
+      }
+      setTrackedQueries((prev) => new Set(prev).add(s.query));
+      showToast(`Now tracking ${s.query} — first scrape queued.`, { type: "success" });
+      onTracked();
+    } catch (err) {
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't track this source.", { type: "error" });
+    } finally {
+      setTrackingQuery(null);
+    }
+  }
+
+  return (
+    <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
+          <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
+            Seeded from this workspace's biggest outliers, then checked against real TikTok data — a suggestion only
+            shows up here if that check actually found videos.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={runSuggest}
+          disabled={status === "loading"}
+          className="shrink-0 rounded-md px-3 py-1.5"
+          style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: status === "loading" ? 0.6 : 1 }}
+        >
+          {status === "loading" ? "Thinking…" : "Suggest sources"}
+        </button>
+      </div>
+
+      {status === "error" && (
+        <div className="mt-4">
+          <AlertBanner>{errorMsg}</AlertBanner>
+        </div>
+      )}
+
+      {status === "done" && result && (
+        <div className="mt-4">
+          {result.suggestions.length === 0 ? (
+            <p style={{ ...fB, fontSize: 13, color: T.muted }}>
+              {result.rawCandidateCount} candidate{result.rawCandidateCount === 1 ? "" : "s"} proposed, none survived
+              verification (already tracked, or no real content found).
+            </p>
+          ) : (
+            <div className="grid gap-3">
+              {result.suggestions.map((s) => {
+                const tracked = trackedQueries.has(s.query);
+                const label = s.sourceType === "hashtag" ? `#${s.query}` : s.sourceType === "creator" ? `@${s.query}` : s.query;
+                return (
+                  <div key={`${s.sourceType}:${s.query}`} className="rounded-lg p-4" style={{ border: `1px solid ${T.line}` }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div style={{ ...fB, fontSize: 14, fontWeight: 700 }}>{label}</div>
+                        <div style={{ ...fM, fontSize: 11, color: T.muted }}>{s.sourceType}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => trackSuggestion(s)}
+                        disabled={tracked || trackingQuery === s.query}
+                        className="shrink-0 rounded-md px-3 py-1.5"
+                        style={{
+                          ...fB, fontSize: 12, fontWeight: 600,
+                          background: tracked ? T.line : T.signal,
+                          color: tracked ? T.muted : "#fff",
+                          opacity: trackingQuery === s.query ? 0.6 : 1,
+                        }}
+                      >
+                        {tracked ? "Tracked" : trackingQuery === s.query ? "Tracking…" : "Track this"}
+                      </button>
+                    </div>
+                    <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.ink, lineHeight: 1.5 }}>{s.rationale}</p>
+                    <p className="mt-2" style={{ ...fM, fontSize: 11, color: T.muted }}>
+                      Verified: {s.verifiedVideoCount} video{s.verifiedVideoCount === 1 ? "" : "s"} found · top sample{" "}
+                      {s.sampleViews.toLocaleString()} views
+                    </p>
+                    {s.sampleCaption && (
+                      <p className="mt-1" style={{ ...fB, fontSize: 12, color: T.muted, fontStyle: "italic" }}>
+                        &ldquo;{s.sampleCaption.length > 140 ? `${s.sampleCaption.slice(0, 140)}…` : s.sampleCaption}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {result.errors?.length > 0 && (
+            <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>{result.errors.join(" · ")}</p>
+          )}
+          <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
+            {result.creditsCharged} credit{result.creditsCharged === 1 ? "" : "s"} charged · {result.creditsRemaining} remaining
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Edits videoLimit only — the tracked query/handle is what a source IS, not
+ * a setting, so changing it here would silently start tracking something
+ * else under the same row. Delete and re-track for that instead.
+ */
+function EditVideoLimitDialog({ open, initialValue, busy, onCancel, onSave }) {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (open) setValue(initialValue);
+  }, [open, initialValue]);
+
+  if (!open) return null;
+  const valid = Number.isInteger(value) && value >= 1 && value <= 200;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(20,24,29,0.45)" }}
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit video limit"
+        className="w-full max-w-sm rounded-lg p-5"
+        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>Edit video limit</div>
+        <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
+          Max videos pulled per refresh (1–200). The tracked query can't be changed here — delete and re-track to change that.
+        </p>
+        <input
+          type="number"
+          min={1}
+          max={200}
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(Number(e.target.value))}
+          style={{ ...inputStyle, width: "100%", marginTop: 12 }}
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, color: T.muted }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(value)}
+            disabled={busy || !valid}
+            className="rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: busy || !valid ? 0.6 : 1 }}
+          >
+            {busy ? "…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete"
+  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete" | "edit"
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingLimit, setEditingLimit] = useState(false);
   const busy = busyAction !== null;
+
+  async function saveVideoLimit(newLimit) {
+    setBusyAction("edit");
+    try {
+      await updateSource(accessToken, workspaceId, source.id, { videoLimit: newLimit });
+      setEditingLimit(false);
+      showToast(`Video limit updated to ${newLimit}.`, { type: "success" });
+      onChanged();
+    } catch (err) {
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update video limit.", { type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  }
 
   async function toggleActive() {
     setBusyAction("toggle");
@@ -199,6 +431,12 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
             onClick={toggleActive}
           />
           <IconButton
+            icon={<EditIcon />}
+            label={`Edit video limit (currently ${source.videoLimit})`}
+            disabled={busy}
+            onClick={() => setEditingLimit(true)}
+          />
+          <IconButton
             icon={<TrashIcon />}
             label="Delete source"
             disabled={busy}
@@ -207,6 +445,13 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
           />
         </div>
       </td>
+      <EditVideoLimitDialog
+        open={editingLimit}
+        initialValue={source.videoLimit}
+        busy={busyAction === "edit"}
+        onCancel={() => setEditingLimit(false)}
+        onSave={saveVideoLimit}
+      />
       <ConfirmDialog
         open={confirmDelete}
         title="Delete this source?"
@@ -275,8 +520,23 @@ export default function Sources() {
         getSource(accessToken, activeWorkspaceId, s.id)
           .then((full) => {
             const run = full.refreshRuns?.[0];
+            const job = full.lastRefreshJob;
+
+            // A refusal (insufficient credits, Apify cap breach) never
+            // reaches the point where a RefreshRun row gets written — so a
+            // source can fail every attempt and `refreshRuns` stays empty.
+            // If the last refresh JOB is a failure and it's more recent than
+            // the last refresh RUN (or there is no run at all), that refusal
+            // is the real story, not whatever the last successful run said.
+            if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
+              return [s.id, { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt }];
+            }
+
             if (!run) return [s.id, null];
-            const errors = JSON.parse(run.errorsJson || "[]");
+            // "(cosmetic only)" is the connector's own marker for notices that
+            // aren't actual failures (e.g. thumbnail ingest deferred to stay
+            // inside a time budget) — don't surface those as warnings.
+            const errors = JSON.parse(run.errorsJson || "[]").filter((e) => !e.includes("(cosmetic only)"));
             return [s.id, errors.length ? { errors, ranAt: run.ranAt } : null];
           })
           .catch(() => [s.id, null]),
@@ -313,6 +573,10 @@ export default function Sources() {
           </p>
         )}
       </div>
+
+      {activeWorkspaceId && (
+        <SuggestedSourcesPanel accessToken={accessToken} workspaceId={activeWorkspaceId} onTracked={load} />
+      )}
 
       <div className="mt-8">
         {error ? (
