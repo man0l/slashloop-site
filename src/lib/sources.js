@@ -49,3 +49,12 @@ export function refreshSource(accessToken, workspaceId, sourceId, videoLimit) {
     body: { workspaceId, videoLimit },
   });
 }
+
+/**
+ * POST /api/sources/suggest { workspaceId } -> AI-seeded suggestions, each
+ * already verified against a real (small) Apify scrape before being
+ * returned — see suggestions.sampleViews/sampleCaption/verifiedVideoCount.
+ */
+export function suggestSources(accessToken, workspaceId) {
+  return apiFetch("/api/sources/suggest", { method: "POST", accessToken, body: { workspaceId } });
+}
