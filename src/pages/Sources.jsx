@@ -45,9 +45,25 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
     try {
       // TikTok only — the connector refuses reels/shorts today (no live
       // scraper for either), so the form never offers them.
-      await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: query.trim(), videoLimit });
+      const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: query.trim(), videoLimit });
       setQuery("");
-      showToast(`Now tracking ${query.trim()}.`, { type: "success" });
+
+      // A newly tracked source with no videos yet just reads as broken
+      // ("never" in LAST REFRESH) until someone notices and clicks Refresh —
+      // this is what the MCP conversational flow already does by default
+      // (create_source chained straight into refresh_source, see
+      // .claude/skills/track/SKILL.md), the site just wasn't doing it too.
+      try {
+        await refreshSource(accessToken, workspaceId, source.id);
+        showToast(`Now tracking ${query.trim()} — first scrape queued.`, { type: "success" });
+      } catch (refreshErr) {
+        showToast(
+          `Tracking ${query.trim()}, but the first scrape didn't start: `
+          + (refreshErr instanceof SourcesApiError ? refreshErr.message : "couldn't queue refresh.")
+          + " Use Refresh to retry.",
+          { type: "error" },
+        );
+      }
       onCreated();
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't create source.", { type: "error" });
