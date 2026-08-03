@@ -88,6 +88,14 @@ export const PlayIcon = () => (
   </svg>
 );
 
+export const WarningIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <path d="M10.3 3.9 1.9 18a1.6 1.6 0 0 0 1.4 2.4h17.4a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0Z" />
+    <line x1="12" y1="9" x2="12" y2="13.5" />
+    <line x1="12" y1="16.5" x2="12" y2="16.6" />
+  </svg>
+);
+
 export const TrashIcon = () => (
   <svg {...ICON_PROPS} aria-hidden="true">
     <path d="M3 6h18" />

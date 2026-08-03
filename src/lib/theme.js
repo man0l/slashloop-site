@@ -25,3 +25,19 @@ export const fM = { fontFamily: "'IBM Plex Mono', monospace" };
 
 export const fmt = (n) =>
   n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "K" : n;
+
+// Compact relative age, e.g. "4h", "3d", "2mo" — for verifying a "newest" sort at a glance.
+export const fmtAge = (ms) => {
+  if (!ms) return "";
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo`;
+  return `${Math.floor(day / 365)}y`;
+};

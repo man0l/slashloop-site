@@ -13,6 +13,16 @@ export function listSources(accessToken, workspaceId, filters = {}) {
 }
 
 /**
+ * GET /api/sources?id=...&workspaceId=... -> source, with its 5 newest videos
+ * and its 3 newest refreshRuns (itemsPulled, newVideos, errorsJson, costCents,
+ * ranAt) — used to surface the last refresh's warnings/errors in the UI.
+ */
+export function getSource(accessToken, workspaceId, sourceId) {
+  const params = new URLSearchParams({ id: sourceId, workspaceId });
+  return apiFetch(`/api/sources?${params.toString()}`, { accessToken });
+}
+
+/**
  * POST /api/sources { workspaceId, platform, sourceType, query, ... } -> source
  * platform is locked to "tiktok" in the UI — the connector refuses others.
  */
