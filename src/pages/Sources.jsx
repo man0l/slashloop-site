@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
@@ -113,12 +113,94 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   );
 }
 
+/**
+ * Edits videoLimit only — the tracked query/handle is what a source IS, not
+ * a setting, so changing it here would silently start tracking something
+ * else under the same row. Delete and re-track for that instead.
+ */
+function EditVideoLimitDialog({ open, initialValue, busy, onCancel, onSave }) {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (open) setValue(initialValue);
+  }, [open, initialValue]);
+
+  if (!open) return null;
+  const valid = Number.isInteger(value) && value >= 1 && value <= 200;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(20,24,29,0.45)" }}
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit video limit"
+        className="w-full max-w-sm rounded-lg p-5"
+        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>Edit video limit</div>
+        <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
+          Max videos pulled per refresh (1–200). The tracked query can't be changed here — delete and re-track to change that.
+        </p>
+        <input
+          type="number"
+          min={1}
+          max={200}
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(Number(e.target.value))}
+          style={{ ...inputStyle, width: "100%", marginTop: 12 }}
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, color: T.muted }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(value)}
+            disabled={busy || !valid}
+            className="rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: busy || !valid ? 0.6 : 1 }}
+          >
+            {busy ? "…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete"
+  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete" | "edit"
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingLimit, setEditingLimit] = useState(false);
   const busy = busyAction !== null;
+
+  async function saveVideoLimit(newLimit) {
+    setBusyAction("edit");
+    try {
+      await updateSource(accessToken, workspaceId, source.id, { videoLimit: newLimit });
+      setEditingLimit(false);
+      showToast(`Video limit updated to ${newLimit}.`, { type: "success" });
+      onChanged();
+    } catch (err) {
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update video limit.", { type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  }
 
   async function toggleActive() {
     setBusyAction("toggle");
@@ -215,6 +297,12 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
             onClick={toggleActive}
           />
           <IconButton
+            icon={<EditIcon />}
+            label={`Edit video limit (currently ${source.videoLimit})`}
+            disabled={busy}
+            onClick={() => setEditingLimit(true)}
+          />
+          <IconButton
             icon={<TrashIcon />}
             label="Delete source"
             disabled={busy}
@@ -223,6 +311,13 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
           />
         </div>
       </td>
+      <EditVideoLimitDialog
+        open={editingLimit}
+        initialValue={source.videoLimit}
+        busy={busyAction === "edit"}
+        onCancel={() => setEditingLimit(false)}
+        onSave={saveVideoLimit}
+      />
       <ConfirmDialog
         open={confirmDelete}
         title="Delete this source?"
