@@ -291,6 +291,18 @@ export default function Sources() {
         getSource(accessToken, activeWorkspaceId, s.id)
           .then((full) => {
             const run = full.refreshRuns?.[0];
+            const job = full.lastRefreshJob;
+
+            // A refusal (insufficient credits, Apify cap breach) never
+            // reaches the point where a RefreshRun row gets written — so a
+            // source can fail every attempt and `refreshRuns` stays empty.
+            // If the last refresh JOB is a failure and it's more recent than
+            // the last refresh RUN (or there is no run at all), that refusal
+            // is the real story, not whatever the last successful run said.
+            if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
+              return [s.id, { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt }];
+            }
+
             if (!run) return [s.id, null];
             // "(cosmetic only)" is the connector's own marker for notices that
             // aren't actual failures (e.g. thumbnail ingest deferred to stay
