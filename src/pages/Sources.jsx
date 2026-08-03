@@ -1,15 +1,35 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
-import { listSources, createSource, updateSource, deleteSource, refreshSource, SourcesApiError } from "../lib/sources.js";
+import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, SourcesApiError } from "../lib/sources.js";
+import { getGallery } from "../lib/gallery.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
 const SOURCE_TYPES = ["creator", "keyword", "hashtag"];
+
+function SourceThumb({ src }) {
+  const [failed, setFailed] = useState(false);
+  const boxStyle = { width: 36, height: 48, borderRadius: 6, background: "#E7E8E3", flexShrink: 0 };
+
+  if (!src || failed) {
+    return <div style={boxStyle} />;
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      style={{ ...boxStyle, objectFit: "cover", display: "block" }}
+    />
+  );
+}
 
 function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   const { showToast } = useToast();
@@ -77,7 +97,7 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   );
 }
 
-function SourceRow({ source, accessToken, workspaceId, onChanged }) {
+function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete"
@@ -138,23 +158,38 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
       title="Open this source's gallery"
     >
       <td className="py-3 pr-4">
-        <div style={{ ...fB, fontSize: 14 }}>{source.query}</div>
-        <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
+        <div className="flex items-center gap-3">
+          <SourceThumb src={thumbUrl} />
+          <div>
+            <div style={{ ...fB, fontSize: 14 }}>{source.query}</div>
+            <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
+          </div>
+        </div>
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>{source.videoCount}</td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>
         {source.lastRefreshedAt ? new Date(source.lastRefreshedAt).toLocaleDateString() : "never"}
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: source.isActive ? T.teal : T.muted }}>
-        {busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}
+        <div className="flex items-center gap-1.5">
+          <span>{busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}</span>
+          {issue?.errors?.length > 0 && (
+            <IconButton
+              icon={<WarningIcon />}
+              label={`Last refresh (${new Date(issue.ranAt).toLocaleString()}): ${issue.errors.join(" · ")}`}
+              danger
+              onClick={() => {}}
+            />
+          )}
+        </div>
       </td>
       <td className="py-3">
         <div className="flex items-center gap-1">
           <IconButton
             icon={<RefreshIcon />}
-            label={busyAction === "refresh" ? "Refreshing…" : "Refresh now"}
+            label={busyAction === "refresh" ? "Refreshing…" : issue?.errors?.length > 0 ? "Retry — last refresh had errors" : "Refresh now"}
             disabled={busy}
-            tone={T.signal}
+            tone={issue?.errors?.length > 0 ? "#B3261E" : T.signal}
             onClick={doRefresh}
           />
           <IconButton
@@ -191,6 +226,14 @@ export default function Sources() {
   const { activeWorkspaceId, loading: workspaceLoading } = useWorkspace();
   const [sources, setSources] = useState(null);
   const [error, setError] = useState("");
+  // sourceId -> thumbUrl of that source's single biggest outlier, used as its
+  // representative image in the table (fetched separately since /api/sources
+  // doesn't carry per-video data).
+  const [topThumbs, setTopThumbs] = useState({});
+  // sourceId -> { errors: string[], ranAt } from that source's most recent
+  // refresh run, so a scrape failure (bad query, scoring error, timeout) is
+  // visible in the row instead of only in server logs.
+  const [refreshIssues, setRefreshIssues] = useState({});
 
   const load = useCallback(() => {
     if (!accessToken || !activeWorkspaceId) return;
@@ -202,8 +245,49 @@ export default function Sources() {
   useEffect(() => {
     setSources(null);
     setError("");
+    setTopThumbs({});
+    setRefreshIssues({});
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!accessToken || !activeWorkspaceId || !sources?.length) return;
+    let cancelled = false;
+    Promise.all(
+      sources.map((s) =>
+        getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: s.id, sortBy: "outlier_score", limit: 1 })
+          .then((r) => [s.id, r.cards?.[0]?.thumbUrl ?? null])
+          .catch(() => [s.id, null]),
+      ),
+    ).then((entries) => {
+      if (!cancelled) setTopThumbs(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, activeWorkspaceId, sources]);
+
+  useEffect(() => {
+    if (!accessToken || !activeWorkspaceId || !sources?.length) return;
+    let cancelled = false;
+    Promise.all(
+      sources.map((s) =>
+        getSource(accessToken, activeWorkspaceId, s.id)
+          .then((full) => {
+            const run = full.refreshRuns?.[0];
+            if (!run) return [s.id, null];
+            const errors = JSON.parse(run.errorsJson || "[]");
+            return [s.id, errors.length ? { errors, ranAt: run.ranAt } : null];
+          })
+          .catch(() => [s.id, null]),
+      ),
+    ).then((entries) => {
+      if (!cancelled) setRefreshIssues(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, activeWorkspaceId, sources]);
 
   if (authLoading) return null;
   if (!user) return <Navigate to="/login?next=/sources" replace />;
@@ -250,7 +334,15 @@ export default function Sources() {
             </thead>
             <tbody>
               {sources.map((s) => (
-                <SourceRow key={s.id} source={s} accessToken={accessToken} workspaceId={activeWorkspaceId} onChanged={load} />
+                <SourceRow
+                  key={s.id}
+                  source={s}
+                  thumbUrl={topThumbs[s.id]}
+                  issue={refreshIssues[s.id]}
+                  accessToken={accessToken}
+                  workspaceId={activeWorkspaceId}
+                  onChanged={load}
+                />
               ))}
             </tbody>
           </table>

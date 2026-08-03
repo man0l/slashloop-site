@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { T, fD, fB, fM, fmt } from "../lib/theme.js";
+import { T, fD, fB, fM, fmt, fmtAge } from "../lib/theme.js";
 import { SectionLabel } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
@@ -46,7 +46,10 @@ function Thumb({ src }) {
 
 function Card({ card, index }) {
   return (
-    <article className="relative rounded-lg overflow-hidden flex flex-col" style={{ border: `1px solid ${T.line}`, background: T.card }}>
+    <article
+      className="relative rounded-lg overflow-hidden flex flex-col transition-transform duration-200 ease-out will-change-transform hover:-translate-y-1.5 hover:shadow-xl"
+      style={{ border: `1px solid ${T.line}`, background: T.card }}
+    >
       {index != null && (
         <span
           className="absolute top-2 left-2 flex items-center justify-center rounded-full"
@@ -61,6 +64,11 @@ function Card({ card, index }) {
         <div className="flex flex-wrap items-center gap-2" style={{ ...fM, fontSize: 12, color: T.muted }}>
           <strong className="truncate" style={{ color: T.ink, maxWidth: "100%" }}>@{card.creatorHandle}</strong>
           <span className="whitespace-nowrap">{fmt(card.views)} views</span>
+          {card.postedAt != null && (
+            <span className="whitespace-nowrap" title={new Date(card.postedAt).toLocaleString()}>
+              {fmtAge(card.postedAt)}
+            </span>
+          )}
           {card.outlierScore != null && (
             <span
               className="whitespace-nowrap rounded px-1.5 py-0.5"
