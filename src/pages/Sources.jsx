@@ -276,7 +276,10 @@ export default function Sources() {
           .then((full) => {
             const run = full.refreshRuns?.[0];
             if (!run) return [s.id, null];
-            const errors = JSON.parse(run.errorsJson || "[]");
+            // "(cosmetic only)" is the connector's own marker for notices that
+            // aren't actual failures (e.g. thumbnail ingest deferred to stay
+            // inside a time budget) — don't surface those as warnings.
+            const errors = JSON.parse(run.errorsJson || "[]").filter((e) => !e.includes("(cosmetic only)"));
             return [s.id, errors.length ? { errors, ranAt: run.ranAt } : null];
           })
           .catch(() => [s.id, null]),
