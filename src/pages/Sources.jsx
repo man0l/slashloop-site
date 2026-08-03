@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
@@ -72,7 +72,7 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
       >
         {status === "loading" ? "Adding…" : "Track source"}
       </button>
-      {error && <p style={{ ...fM, fontSize: 12, color: "#B3261E" }}>{error}</p>}
+      {error && <AlertBanner className="basis-full">{error}</AlertBanner>}
     </form>
   );
 }
@@ -125,7 +125,7 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
       <td className="py-3 pr-4">
         <div style={{ ...fB, fontSize: 14 }}>{source.query}</div>
         <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
-        {rowError && <div style={{ ...fM, fontSize: 11, color: "#B3261E" }}>{rowError}</div>}
+        {rowError && <AlertBanner className="mt-1">{rowError}</AlertBanner>}
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>{source.videoCount}</td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>
@@ -206,7 +206,7 @@ export default function Sources() {
 
       <div className="mt-8">
         {error ? (
-          <p style={{ fontSize: 14, color: T.muted }}>{error}</p>
+          <AlertBanner>{error}</AlertBanner>
         ) : !activeWorkspaceId ? null : sources === null ? (
           <p style={{ fontSize: 14, color: T.muted }}>Loading…</p>
         ) : sources.length === 0 ? (

@@ -34,3 +34,22 @@ export function GhostButton({ to, onClick, children }) {
   if (to) return <Link to={to} className={className} style={style}>{children}</Link>;
   return <button onClick={onClick} className={className} style={style}>{children}</button>;
 }
+
+/**
+ * Error/status banner for the outcome of an action (create, delete,
+ * refresh, ...) — a bordered card instead of a bare line of red text, so
+ * it reads as a notification rather than stray text near the controls.
+ * `action` renders a link/button on the right (e.g. "Upgrade →").
+ */
+export function AlertBanner({ children, action, className = "" }) {
+  return (
+    <div
+      role="alert"
+      className={`flex items-start gap-2 rounded-md px-3 py-2 ${className}`}
+      style={{ background: "#FDECEA", border: "1px solid #F3B5AE" }}
+    >
+      <span style={{ ...fB, fontSize: 13, lineHeight: 1.4, color: "#7A1F17" }}>{children}</span>
+      {action && <span className="shrink-0">{action}</span>}
+    </div>
+  );
+}

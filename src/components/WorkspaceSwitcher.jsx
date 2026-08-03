@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { T, fB, fM } from "../lib/theme.js";
+import { AlertBanner } from "./ui.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { WorkspacesApiError } from "../lib/workspaces.js";
 
@@ -92,24 +93,18 @@ export default function WorkspaceSwitcher() {
       )}
 
       {(error || createError) && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md px-3 py-2 w-full basis-full"
-          style={{ background: "#FDECEA", border: "1px solid #F3B5AE" }}
+        <AlertBanner
+          className="w-full basis-full"
+          action={
+            createErrorCode === "workspace_limit_reached" && (
+              <Link to="/pricing" style={{ ...fM, fontSize: 12, color: T.signal, textDecoration: "underline" }}>
+                Upgrade →
+              </Link>
+            )
+          }
         >
-          <span style={{ ...fB, fontSize: 13, lineHeight: 1.4, color: "#7A1F17" }}>
-            {createError || error}
-          </span>
-          {createErrorCode === "workspace_limit_reached" && (
-            <Link
-              to="/pricing"
-              className="shrink-0"
-              style={{ ...fM, fontSize: 12, color: T.signal, textDecoration: "underline" }}
-            >
-              Upgrade →
-            </Link>
-          )}
-        </div>
+          {createError || error}
+        </AlertBanner>
       )}
     </div>
   );
