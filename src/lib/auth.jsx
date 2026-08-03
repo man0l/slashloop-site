@@ -28,14 +28,6 @@ export function AuthProvider({ children }) {
     user: session?.user ?? null,
     loading,
     accessToken: session?.access_token ?? null,
-    signInWithPassword: (email, password) =>
-      supabaseConfigured
-        ? supabase.auth.signInWithPassword({ email, password })
-        : Promise.resolve({ data: null, error: NOT_CONFIGURED_ERROR }),
-    signUp: (email, password) =>
-      supabaseConfigured
-        ? supabase.auth.signUp({ email, password })
-        : Promise.resolve({ data: null, error: NOT_CONFIGURED_ERROR }),
     signInWithOAuth: (provider, redirectTo) =>
       supabaseConfigured
         ? supabase.auth.signInWithOAuth({ provider, options: { redirectTo } })

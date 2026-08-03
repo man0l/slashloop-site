@@ -32,7 +32,7 @@ Vite only exposes env vars prefixed `VITE_` to the browser.
 |---|---|
 | `/` | Marketing homepage |
 | `/pricing` | Plans + checkout |
-| `/login` | Supabase email/password sign in & sign up |
+| `/login` | Supabase sign in via Google / GitHub OAuth |
 | `/account` | Plan, credit balance, billing portal link |
 | `/billing/success` | Stripe Checkout return — polls for the webhook to land |
 | `/billing/cancel` | Stripe Checkout cancel return |
