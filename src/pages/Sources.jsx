@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, AlertBanner } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
@@ -78,67 +78,89 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
 }
 
 function SourceRow({ source, accessToken, workspaceId, onChanged }) {
-  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete"
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [rowError, setRowError] = useState("");
+  const [notice, setNotice] = useState("");
+  const busy = busyAction !== null;
 
   async function toggleActive() {
-    setBusy(true);
+    setBusyAction("toggle");
     setRowError("");
+    setNotice("");
     try {
       await updateSource(accessToken, workspaceId, source.id, { isActive: !source.isActive });
       onChanged();
     } catch (err) {
       setRowError(err instanceof SourcesApiError ? err.message : "Couldn't update source.");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
   async function doRefresh() {
-    setBusy(true);
+    setBusyAction("refresh");
     setRowError("");
+    setNotice("");
     try {
       await refreshSource(accessToken, workspaceId, source.id);
+      setNotice("Refresh queued — new videos will show up shortly.");
       onChanged();
     } catch (err) {
       setRowError(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
   async function doDelete() {
-    setBusy(true);
+    setBusyAction("delete");
     setRowError("");
+    setNotice("");
     try {
       await deleteSource(accessToken, workspaceId, source.id);
       onChanged();
     } catch (err) {
       setRowError(err instanceof SourcesApiError ? err.message : "Couldn't delete source.");
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
+  // Row navigates to this source's gallery; clicks on an action button/link
+  // inside it must not also trigger that navigation.
+  function openGallery(e) {
+    if (e.target.closest("button, a")) return;
+    navigate(`/gallery?sourceId=${source.id}`);
+  }
+
   return (
-    <tr style={{ borderTop: `1px solid ${T.line}` }}>
+    <tr
+      onClick={openGallery}
+      className="cursor-pointer"
+      style={{ borderTop: `1px solid ${T.line}` }}
+      title="Open this source's gallery"
+    >
       <td className="py-3 pr-4">
         <div style={{ ...fB, fontSize: 14 }}>{source.query}</div>
         <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
         {rowError && <AlertBanner className="mt-1">{rowError}</AlertBanner>}
+        {notice && <p className="mt-1" style={{ ...fM, fontSize: 11, color: T.teal }}>{notice}</p>}
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>{source.videoCount}</td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>
         {source.lastRefreshedAt ? new Date(source.lastRefreshedAt).toLocaleDateString() : "never"}
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: source.isActive ? T.teal : T.muted }}>
-        {source.isActive ? "active" : "paused"}
+        {busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}
       </td>
       <td className="py-3">
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={doRefresh} style={{ ...fM, fontSize: 11, color: T.signal }}>refresh</button>
+          <button type="button" disabled={busy} onClick={doRefresh} style={{ ...fM, fontSize: 11, color: T.signal }}>
+            {busyAction === "refresh" ? "refreshing…" : "refresh"}
+          </button>
           <button type="button" disabled={busy} onClick={toggleActive} style={{ ...fM, fontSize: 11, color: T.ink }}>
-            {source.isActive ? "pause" : "resume"}
+            {busyAction === "toggle" ? "…" : source.isActive ? "pause" : "resume"}
           </button>
           {!confirmDelete ? (
             <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} style={{ ...fM, fontSize: 11, color: T.muted }}>
@@ -147,7 +169,7 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
           ) : (
             <>
               <button type="button" disabled={busy} onClick={doDelete} style={{ ...fM, fontSize: 11, color: "#B3261E" }}>
-                confirm delete
+                {busyAction === "delete" ? "deleting…" : "confirm delete"}
               </button>
               <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)} style={{ ...fM, fontSize: 11, color: T.muted }}>
                 cancel
