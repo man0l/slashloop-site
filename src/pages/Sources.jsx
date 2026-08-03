@@ -1,37 +1,38 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel, AlertBanner } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
+import { useToast } from "../lib/toast.jsx";
 import { listSources, createSource, updateSource, deleteSource, refreshSource, SourcesApiError } from "../lib/sources.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
 const SOURCE_TYPES = ["creator", "keyword", "hashtag"];
 
 function NewSourceForm({ accessToken, workspaceId, onCreated }) {
+  const { showToast } = useToast();
   const [sourceType, setSourceType] = useState("creator");
   const [query, setQuery] = useState("");
   const [videoLimit, setVideoLimit] = useState(20);
-  const [status, setStatus] = useState("idle"); // idle | loading | error
-  const [error, setError] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | loading
 
   async function submit(e) {
     e.preventDefault();
     if (!query.trim()) return;
     setStatus("loading");
-    setError("");
     try {
       // TikTok only — the connector refuses reels/shorts today (no live
       // scraper for either), so the form never offers them.
       await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: query.trim(), videoLimit });
       setQuery("");
-      setStatus("idle");
+      showToast(`Now tracking ${query.trim()}.`, { type: "success" });
       onCreated();
     } catch (err) {
-      setStatus("error");
-      setError(err instanceof SourcesApiError ? err.message : "Couldn't create source.");
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't create source.", { type: "error" });
+    } finally {
+      setStatus("idle");
     }
   }
 
@@ -72,28 +73,24 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
       >
         {status === "loading" ? "Adding…" : "Track source"}
       </button>
-      {error && <AlertBanner className="basis-full">{error}</AlertBanner>}
     </form>
   );
 }
 
 function SourceRow({ source, accessToken, workspaceId, onChanged }) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete"
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [rowError, setRowError] = useState("");
-  const [notice, setNotice] = useState("");
   const busy = busyAction !== null;
 
   async function toggleActive() {
     setBusyAction("toggle");
-    setRowError("");
-    setNotice("");
     try {
       await updateSource(accessToken, workspaceId, source.id, { isActive: !source.isActive });
       onChanged();
     } catch (err) {
-      setRowError(err instanceof SourcesApiError ? err.message : "Couldn't update source.");
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update source.", { type: "error" });
     } finally {
       setBusyAction(null);
     }
@@ -101,14 +98,12 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
 
   async function doRefresh() {
     setBusyAction("refresh");
-    setRowError("");
-    setNotice("");
     try {
       await refreshSource(accessToken, workspaceId, source.id);
-      setNotice("Refresh queued — new videos will show up shortly.");
+      showToast("Refresh queued — new videos will show up shortly.", { type: "success" });
       onChanged();
     } catch (err) {
-      setRowError(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.");
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.", { type: "error" });
     } finally {
       setBusyAction(null);
     }
@@ -116,13 +111,14 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
 
   async function doDelete() {
     setBusyAction("delete");
-    setRowError("");
-    setNotice("");
     try {
       await deleteSource(accessToken, workspaceId, source.id);
+      setConfirmDelete(false);
+      showToast(`Deleted ${source.query}.`, { type: "success" });
       onChanged();
     } catch (err) {
-      setRowError(err instanceof SourcesApiError ? err.message : "Couldn't delete source.");
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't delete source.", { type: "error" });
+    } finally {
       setBusyAction(null);
     }
   }
@@ -144,8 +140,6 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
       <td className="py-3 pr-4">
         <div style={{ ...fB, fontSize: 14 }}>{source.query}</div>
         <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
-        {rowError && <AlertBanner className="mt-1">{rowError}</AlertBanner>}
-        {notice && <p className="mt-1" style={{ ...fM, fontSize: 11, color: T.teal }}>{notice}</p>}
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>{source.videoCount}</td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>
@@ -162,22 +156,21 @@ function SourceRow({ source, accessToken, workspaceId, onChanged }) {
           <button type="button" disabled={busy} onClick={toggleActive} style={{ ...fM, fontSize: 11, color: T.ink }}>
             {busyAction === "toggle" ? "…" : source.isActive ? "pause" : "resume"}
           </button>
-          {!confirmDelete ? (
-            <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} style={{ ...fM, fontSize: 11, color: T.muted }}>
-              delete
-            </button>
-          ) : (
-            <>
-              <button type="button" disabled={busy} onClick={doDelete} style={{ ...fM, fontSize: 11, color: "#B3261E" }}>
-                {busyAction === "delete" ? "deleting…" : "confirm delete"}
-              </button>
-              <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)} style={{ ...fM, fontSize: 11, color: T.muted }}>
-                cancel
-              </button>
-            </>
-          )}
+          <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} style={{ ...fM, fontSize: 11, color: T.muted }}>
+            delete
+          </button>
         </div>
       </td>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this source?"
+        message={`Stops tracking "${source.query}" and removes it from Sources. Videos already scraped from it stay in your library.`}
+        confirmLabel="Delete"
+        danger
+        busy={busyAction === "delete"}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={doDelete}
+      />
     </tr>
   );
 }

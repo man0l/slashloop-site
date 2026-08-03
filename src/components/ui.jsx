@@ -53,3 +53,52 @@ export function AlertBanner({ children, action, className = "" }) {
     </div>
   );
 }
+
+/**
+ * An actual popup — a centered modal over a dimmed backdrop — for
+ * confirming a destructive action. Replaces swapping a row's buttons out
+ * for "confirm/cancel" in place, which is easy to miss and doesn't read as
+ * a deliberate checkpoint.
+ */
+export function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", danger, busy, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(20,24,29,0.45)" }}
+      onClick={onCancel}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-sm rounded-lg p-5"
+        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {title && <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</div>}
+        {message && <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>{message}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, color: T.muted }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, fontWeight: 600, background: danger ? "#B3261E" : T.signal, color: "#fff", opacity: busy ? 0.6 : 1 }}
+          >
+            {busy ? "…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
