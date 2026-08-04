@@ -6,7 +6,7 @@ import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
-import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, SourcesApiError } from "../lib/sources.js";
+import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, verifySuggestedSource, SourcesApiError } from "../lib/sources.js";
 import { getGallery } from "../lib/gallery.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
@@ -114,26 +114,76 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
 }
 
 /**
- * AI-seeded suggestions, seeded from this workspace's biggest outliers and
- * verified against one real (small) Apify scrape per candidate server-side
- * — every card shown here already proved it has real videos behind it.
+ * AI-seeded suggestions, seeded from this workspace's biggest outliers, then
+ * checked one at a time against real TikTok data. Seeding is one fast AI
+ * call — candidates show up immediately as "checking" cards; each one then
+ * flips to a real suggestion (or drops out) the moment its own verification
+ * scrape resolves, rather than the whole panel blocking on the slowest of
+ * them (a real Apify scrape can take anywhere from a few seconds to well
+ * over a minute).
  */
 function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   const { showToast } = useToast();
-  const [status, setStatus] = useState("idle"); // idle | loading | done | error
-  const [result, setResult] = useState(null);
+  const [status, setStatus] = useState("idle"); // idle | seeding | verifying | done | error
+  const [rows, setRows] = useState([]); // [{ sourceType, query, rationale, state: checking|verified|discarded, suggestion?, error? }]
+  const [seedMeta, setSeedMeta] = useState(null); // { rawCandidateCount, alreadyTrackedCount }
   const [errorMsg, setErrorMsg] = useState("");
+  const [creditsRemaining, setCreditsRemaining] = useState(null);
+  const [creditsCharged, setCreditsCharged] = useState(0);
   const [trackedQueries, setTrackedQueries] = useState(new Set());
   const [trackingQuery, setTrackingQuery] = useState(null);
 
-  async function runSuggest() {
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const r = await suggestSources(accessToken, workspaceId);
-      setResult(r);
-      setTrackedQueries(new Set());
+  // Flip "verifying" -> "done" once every row has left "checking", so the
+  // header can stop saying "Checking N candidates…".
+  useEffect(() => {
+    if (status === "verifying" && rows.length > 0 && rows.every((r) => r.state !== "checking")) {
       setStatus("done");
+    }
+  }, [status, rows]);
+
+  async function runSuggest() {
+    setStatus("seeding");
+    setErrorMsg("");
+    setRows([]);
+    setSeedMeta(null);
+    setCreditsCharged(0);
+    setTrackedQueries(new Set());
+    try {
+      const seed = await suggestSources(accessToken, workspaceId);
+      setSeedMeta(seed);
+      setCreditsRemaining(seed.creditsRemaining);
+      setCreditsCharged(seed.creditsCharged);
+
+      if (seed.candidates.length === 0) {
+        setStatus("done");
+        return;
+      }
+
+      setRows(seed.candidates.map((c) => ({ ...c, state: "checking" })));
+      setStatus("verifying");
+
+      // Fire one verify call per candidate — don't await them together.
+      // Each row updates itself the instant its own call resolves.
+      seed.candidates.forEach((candidate, i) => {
+        verifySuggestedSource(accessToken, workspaceId, candidate)
+          .then((r) => {
+            setCreditsRemaining(r.creditsRemaining);
+            setCreditsCharged((prev) => prev + r.creditsCharged);
+            setRows((prev) => prev.map((row, idx) => (idx !== i ? row : {
+              ...row,
+              state: r.verified ? "verified" : "discarded",
+              suggestion: r.verified ? r.suggestion : undefined,
+              error: !r.ok ? r.error : undefined,
+            })));
+          })
+          .catch((err) => {
+            setRows((prev) => prev.map((row, idx) => (idx !== i ? row : {
+              ...row,
+              state: "discarded",
+              error: err instanceof SourcesApiError ? err.message : "Couldn't verify this candidate.",
+            })));
+          });
+      });
     } catch (err) {
       setErrorMsg(err instanceof SourcesApiError ? err.message : "Couldn't generate suggestions.");
       setStatus("error");
@@ -159,6 +209,9 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
     }
   }
 
+  const checkingCount = rows.filter((r) => r.state === "checking").length;
+  const discardedCount = (seedMeta?.alreadyTrackedCount ?? 0) + rows.filter((r) => r.state === "discarded").length;
+
   return (
     <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
       <div className="flex items-center justify-between gap-3">
@@ -166,17 +219,17 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
           <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
           <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
             Seeded from this workspace's biggest outliers, then checked against real TikTok data — a suggestion only
-            shows up here if that check actually found videos.
+            stays up if that check actually found videos.
           </p>
         </div>
         <button
           type="button"
           onClick={runSuggest}
-          disabled={status === "loading"}
+          disabled={status === "seeding" || status === "verifying"}
           className="shrink-0 rounded-md px-3 py-1.5"
-          style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: status === "loading" ? 0.6 : 1 }}
+          style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: status === "seeding" || status === "verifying" ? 0.6 : 1 }}
         >
-          {status === "loading" ? "Thinking…" : "Suggest sources"}
+          {status === "seeding" ? "Thinking…" : status === "verifying" ? "Checking…" : "Suggest sources"}
         </button>
       </div>
 
@@ -186,61 +239,79 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
         </div>
       )}
 
-      {status === "done" && result && (
+      {(status === "verifying" || status === "done") && (
         <div className="mt-4">
-          {result.suggestions.length === 0 ? (
+          {status === "verifying" && (
+            <p className="mb-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
+              Checking {checkingCount} of {rows.length} candidate{rows.length === 1 ? "" : "s"} against real TikTok data…
+            </p>
+          )}
+          {rows.length === 0 ? (
             <p style={{ ...fB, fontSize: 13, color: T.muted }}>
-              {result.rawCandidateCount} candidate{result.rawCandidateCount === 1 ? "" : "s"} proposed, none survived
-              verification (already tracked, or no real content found).
+              {seedMeta?.rawCandidateCount ?? 0} candidate{(seedMeta?.rawCandidateCount ?? 0) === 1 ? "" : "s"} proposed, none
+              survived verification (already tracked, or no real content found).
             </p>
           ) : (
             <div className="grid gap-3">
-              {result.suggestions.map((s) => {
-                const tracked = trackedQueries.has(s.query);
-                const label = s.sourceType === "hashtag" ? `#${s.query}` : s.sourceType === "creator" ? `@${s.query}` : s.query;
+              {rows.filter((r) => r.state !== "discarded").map((row) => {
+                const label = row.sourceType === "hashtag" ? `#${row.query}` : row.sourceType === "creator" ? `@${row.query}` : row.query;
+                const tracked = trackedQueries.has(row.query);
+                const s = row.suggestion;
                 return (
-                  <div key={`${s.sourceType}:${s.query}`} className="rounded-lg p-4" style={{ border: `1px solid ${T.line}` }}>
+                  <div key={`${row.sourceType}:${row.query}`} className="rounded-lg p-4" style={{ border: `1px solid ${T.line}` }}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div style={{ ...fB, fontSize: 14, fontWeight: 700 }}>{label}</div>
-                        <div style={{ ...fM, fontSize: 11, color: T.muted }}>{s.sourceType}</div>
+                        <div style={{ ...fM, fontSize: 11, color: T.muted }}>{row.sourceType}</div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => trackSuggestion(s)}
-                        disabled={tracked || trackingQuery === s.query}
-                        className="shrink-0 rounded-md px-3 py-1.5"
-                        style={{
-                          ...fB, fontSize: 12, fontWeight: 600,
-                          background: tracked ? T.line : T.signal,
-                          color: tracked ? T.muted : "#fff",
-                          opacity: trackingQuery === s.query ? 0.6 : 1,
-                        }}
-                      >
-                        {tracked ? "Tracked" : trackingQuery === s.query ? "Tracking…" : "Track this"}
-                      </button>
+                      {row.state === "checking" ? (
+                        <span style={{ ...fM, fontSize: 11, color: T.muted }}>Checking…</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => trackSuggestion(row)}
+                          disabled={tracked || trackingQuery === row.query}
+                          className="shrink-0 rounded-md px-3 py-1.5"
+                          style={{
+                            ...fB, fontSize: 12, fontWeight: 600,
+                            background: tracked ? T.line : T.signal,
+                            color: tracked ? T.muted : "#fff",
+                            opacity: trackingQuery === row.query ? 0.6 : 1,
+                          }}
+                        >
+                          {tracked ? "Tracked" : trackingQuery === row.query ? "Tracking…" : "Track this"}
+                        </button>
+                      )}
                     </div>
-                    <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.ink, lineHeight: 1.5 }}>{s.rationale}</p>
-                    <p className="mt-2" style={{ ...fM, fontSize: 11, color: T.muted }}>
-                      Verified: {s.verifiedVideoCount} video{s.verifiedVideoCount === 1 ? "" : "s"} found · top sample{" "}
-                      {s.sampleViews.toLocaleString()} views
-                    </p>
-                    {s.sampleCaption && (
-                      <p className="mt-1" style={{ ...fB, fontSize: 12, color: T.muted, fontStyle: "italic" }}>
-                        &ldquo;{s.sampleCaption.length > 140 ? `${s.sampleCaption.slice(0, 140)}…` : s.sampleCaption}&rdquo;
-                      </p>
+                    <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.ink, lineHeight: 1.5 }}>{row.rationale}</p>
+                    {s && (
+                      <>
+                        <p className="mt-2" style={{ ...fM, fontSize: 11, color: T.muted }}>
+                          Verified: {s.verifiedVideoCount} video{s.verifiedVideoCount === 1 ? "" : "s"} found · top sample{" "}
+                          {s.sampleViews.toLocaleString()} views
+                        </p>
+                        {s.sampleCaption && (
+                          <p className="mt-1" style={{ ...fB, fontSize: 12, color: T.muted, fontStyle: "italic" }}>
+                            &ldquo;{s.sampleCaption.length > 140 ? `${s.sampleCaption.slice(0, 140)}…` : s.sampleCaption}&rdquo;
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 );
               })}
             </div>
           )}
-          {result.errors?.length > 0 && (
-            <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>{result.errors.join(" · ")}</p>
+          {status === "done" && discardedCount > 0 && (
+            <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
+              {discardedCount} candidate{discardedCount === 1 ? "" : "s"} didn't pan out (already tracked, or no real content found).
+            </p>
           )}
-          <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
-            {result.creditsCharged} credit{result.creditsCharged === 1 ? "" : "s"} charged · {result.creditsRemaining} remaining
-          </p>
+          {status === "done" && (
+            <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
+              {creditsCharged} credit{creditsCharged === 1 ? "" : "s"} charged · {creditsRemaining} remaining
+            </p>
+          )}
         </div>
       )}
     </div>
