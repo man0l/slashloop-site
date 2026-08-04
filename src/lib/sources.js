@@ -51,10 +51,28 @@ export function refreshSource(accessToken, workspaceId, sourceId, videoLimit) {
 }
 
 /**
- * POST /api/sources/suggest { workspaceId } -> AI-seeded suggestions, each
- * already verified against a real (small) Apify scrape before being
- * returned — see suggestions.sampleViews/sampleCaption/verifiedVideoCount.
+ * POST /api/sources/suggest { workspaceId } -> AI-seeded candidates, NOT yet
+ * verified against real TikTok data (fast — one Gemini call). Each candidate
+ * is { sourceType, query, rationale }; call verifySuggestedSource per
+ * candidate to check it and get sample stats.
  */
 export function suggestSources(accessToken, workspaceId) {
   return apiFetch("/api/sources/suggest", { method: "POST", accessToken, body: { workspaceId } });
+}
+
+/**
+ * POST /api/sources/suggest/verify { workspaceId, sourceType, query, rationale }
+ * -> verifies ONE candidate with one real (small) Apify scrape. Returns
+ * { ok, verified, suggestion?, creditsCharged, creditsRemaining, error? } —
+ * verified is false (not an error) for "already tracked" or "no real content
+ * found", both normal outcomes. Meant to be called once per candidate from
+ * suggestSources, so the caller can render each result as its own call
+ * resolves instead of waiting for all of them together.
+ */
+export function verifySuggestedSource(accessToken, workspaceId, candidate) {
+  return apiFetch("/api/sources/suggest/verify", {
+    method: "POST",
+    accessToken,
+    body: { workspaceId, sourceType: candidate.sourceType, query: candidate.query, rationale: candidate.rationale },
+  });
 }
