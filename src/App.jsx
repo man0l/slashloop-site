@@ -1,4 +1,5 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { T, fD, fM, FONTS } from "./lib/theme.js";
 import { CTAButton, GhostButton } from "./components/ui.jsx";
 import { useAuth } from "./lib/auth.jsx";
@@ -22,32 +23,93 @@ function Logo() {
   );
 }
 
+const MenuIcon = ({ open }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+    {open ? (
+      <>
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </>
+    ) : (
+      <>
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </>
+    )}
+  </svg>
+);
+
 function Nav() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // A route change (following a link, or the "next" redirect after sign-in)
+  // means the menu's job is done — leaving it open would cover the new page.
+  useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  const loggedInLinks = (
+    <>
+      <Link to="/sources" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Sources</Link>
+      <Link to="/gallery" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Gallery</Link>
+    </>
+  );
+
   return (
-    <header className="max-w-5xl mx-auto px-5 py-5 flex items-center justify-between">
-      <Logo />
-      <div className="flex items-center gap-3">
-        <Link to="/pricing" className="hidden sm:inline" style={{ ...fM, fontSize: 13, color: T.ink }}>
-          Pricing
-        </Link>
-        {loading ? null : user ? (
-          <>
-            <Link to="/sources" className="hidden sm:inline" style={{ ...fM, fontSize: 13, color: T.ink }}>
-              Sources
-            </Link>
-            <Link to="/gallery" className="hidden sm:inline" style={{ ...fM, fontSize: 13, color: T.ink }}>
-              Gallery
-            </Link>
-            <CTAButton to="/account">Account</CTAButton>
-          </>
-        ) : (
-          <>
-            <GhostButton to="/login">Sign in</GhostButton>
-            <CTAButton to="/pricing">Get started</CTAButton>
-          </>
-        )}
+    <header className="max-w-5xl mx-auto px-5 py-5 relative">
+      <div className="flex items-center justify-between">
+        <Logo />
+        {/* Desktop: full inline nav. Hidden below sm — a signed-in user's
+            Sources/Gallery links have nowhere else to live at that width, so
+            the hamburger below is the only way to reach them on mobile. */}
+        <div className="hidden sm:flex items-center gap-4">
+          <Link to="/pricing" style={{ ...fM, fontSize: 13, color: T.ink }}>Pricing</Link>
+          {loading ? null : user ? (
+            <>
+              {loggedInLinks}
+              <CTAButton to="/account">Account</CTAButton>
+            </>
+          ) : (
+            <>
+              <GhostButton to="/login">Sign in</GhostButton>
+              <CTAButton to="/pricing">Get started</CTAButton>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          className="sm:hidden p-1.5"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={menuOpen}
+          style={{ color: T.ink }}
+        >
+          <MenuIcon open={menuOpen} />
+        </button>
       </div>
+
+      {menuOpen && (
+        <div
+          className="sm:hidden absolute left-0 right-0 top-full mx-5 mt-2 rounded-xl p-4 flex flex-col gap-3.5 z-20"
+          style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
+        >
+          <Link to="/pricing" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Pricing</Link>
+          {loading ? null : user ? (
+            <>
+              {loggedInLinks}
+              <Link to="/account" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Account</Link>
+            </>
+          ) : (
+            <>
+              <Link to="/login" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Sign in</Link>
+              <div className="pt-1">
+                <CTAButton to="/pricing">Get started</CTAButton>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </header>
   );
 }
