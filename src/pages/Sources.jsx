@@ -133,6 +133,14 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   const [trackedQueries, setTrackedQueries] = useState(new Set());
   const [trackingQuery, setTrackingQuery] = useState(null);
 
+  // Kept in sync with state so the abandon-a-batch paths below (a fresh run,
+  // closing the panel, or navigating away) can read the latest rows/tracked
+  // set without capturing a stale closure.
+  const rowsRef = useRef(rows);
+  const trackedRef = useRef(trackedQueries);
+  useEffect(() => { rowsRef.current = rows; }, [rows]);
+  useEffect(() => { trackedRef.current = trackedQueries; }, [trackedQueries]);
+
   // Flip "verifying" -> "done" once every row has left "checking", so the
   // header can stop saying "Checking N candidates…".
   useEffect(() => {
@@ -141,7 +149,29 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
     }
   }, [status, rows]);
 
+  // A suggestion the user saw and didn't track is a rejection just as much
+  // as an explicit "×" click — it shouldn't keep coming back either. Called
+  // whenever a batch is being abandoned: a fresh run, closing the panel, or
+  // leaving the page. Still-"checking" rows are left alone — there's no
+  // suggestion to judge yet. Already-explicitly-dismissed rows are skipped
+  // (redundant, though harmless — dismissSuggestedSource is idempotent).
+  function persistUnactionedAsRejected(rowsSnapshot, trackedSnapshot) {
+    rowsSnapshot
+      .filter((r) => r.state !== "checking" && !r.dismissed && !trackedSnapshot.has(r.query))
+      .forEach((r) => { dismissSuggestedSource(accessToken, workspaceId, r).catch(() => {}); });
+  }
+
+  // Covers navigating away from the page entirely with suggestions still on
+  // screen — same "seen it, didn't track it" rule as closing the panel.
+  useEffect(() => {
+    return () => {
+      persistUnactionedAsRejected(rowsRef.current, trackedRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function runSuggest() {
+    persistUnactionedAsRejected(rows, trackedQueries);
     setStatus("seeding");
     setErrorMsg("");
     setRows([]);
@@ -231,6 +261,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   // Closes the whole panel back to its idle state. Suggest sources still
   // works right after — it's a fresh run, not a disabled button.
   function closeAll() {
+    persistUnactionedAsRejected(rows, trackedQueries);
     setStatus("idle");
     setRows([]);
     setSeedMeta(null);
@@ -251,7 +282,8 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
           <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
           <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
             Seeded from this workspace's biggest outliers, then checked against real TikTok data — a suggestion only
-            stays up if that check actually found videos. Dismissed suggestions won't come back on future runs.
+            stays up if that check actually found videos. A suggestion you don't track — dismissed or just left
+            behind — won't come back on future runs.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
