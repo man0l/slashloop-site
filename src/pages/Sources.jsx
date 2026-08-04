@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { T, fD, fB, fM, fmtAge } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon, CloseIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
-import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, verifySuggestedSource, SourcesApiError } from "../lib/sources.js";
+import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, verifySuggestedSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
 import { getGallery } from "../lib/gallery.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
@@ -125,8 +125,8 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
 function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   const { showToast } = useToast();
   const [status, setStatus] = useState("idle"); // idle | seeding | verifying | done | error
-  const [rows, setRows] = useState([]); // [{ sourceType, query, rationale, state: checking|verified|discarded, suggestion?, error? }]
-  const [seedMeta, setSeedMeta] = useState(null); // { rawCandidateCount, alreadyTrackedCount }
+  const [rows, setRows] = useState([]); // [{ sourceType, query, rationale, state: checking|verified|discarded, dismissed?, suggestion?, error? }]
+  const [seedMeta, setSeedMeta] = useState(null); // { rawCandidateCount, alreadyTrackedCount, alreadyDismissedCount }
   const [errorMsg, setErrorMsg] = useState("");
   const [creditsRemaining, setCreditsRemaining] = useState(null);
   const [creditsCharged, setCreditsCharged] = useState(0);
@@ -163,13 +163,16 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
       setStatus("verifying");
 
       // Fire one verify call per candidate — don't await them together.
-      // Each row updates itself the instant its own call resolves.
-      seed.candidates.forEach((candidate, i) => {
+      // Each row updates itself the instant its own call resolves. Matched
+      // by sourceType+query, not array index — a dismissed row stays in the
+      // array (just hidden), so indices never shift out from under an
+      // in-flight call.
+      seed.candidates.forEach((candidate) => {
         verifySuggestedSource(accessToken, workspaceId, candidate)
           .then((r) => {
             setCreditsRemaining(r.creditsRemaining);
             setCreditsCharged((prev) => prev + r.creditsCharged);
-            setRows((prev) => prev.map((row, idx) => (idx !== i ? row : {
+            setRows((prev) => prev.map((row) => (row.sourceType !== candidate.sourceType || row.query !== candidate.query ? row : {
               ...row,
               state: r.verified ? "verified" : "discarded",
               suggestion: r.verified ? r.suggestion : undefined,
@@ -177,7 +180,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
             })));
           })
           .catch((err) => {
-            setRows((prev) => prev.map((row, idx) => (idx !== i ? row : {
+            setRows((prev) => prev.map((row) => (row.sourceType !== candidate.sourceType || row.query !== candidate.query ? row : {
               ...row,
               state: "discarded",
               error: err instanceof SourcesApiError ? err.message : "Couldn't verify this candidate.",
@@ -209,8 +212,37 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
     }
   }
 
+  // Not interested in this one — hides it now (regardless of whether its own
+  // verification is still in flight) and remembers the choice server-side,
+  // so a future "Suggest sources" run for this workspace won't propose it
+  // again either.
+  async function dismissRow(row) {
+    setRows((prev) => prev.map((r) => (r.sourceType !== row.sourceType || r.query !== row.query ? r : { ...r, dismissed: true })));
+    try {
+      await dismissSuggestedSource(accessToken, workspaceId, row);
+    } catch (err) {
+      showToast(
+        err instanceof SourcesApiError ? err.message : "Couldn't save that — it may show up again next time.",
+        { type: "error" },
+      );
+    }
+  }
+
+  // Closes the whole panel back to its idle state. Suggest sources still
+  // works right after — it's a fresh run, not a disabled button.
+  function closeAll() {
+    setStatus("idle");
+    setRows([]);
+    setSeedMeta(null);
+    setErrorMsg("");
+    setCreditsCharged(0);
+    setTrackedQueries(new Set());
+  }
+
   const checkingCount = rows.filter((r) => r.state === "checking").length;
-  const discardedCount = (seedMeta?.alreadyTrackedCount ?? 0) + rows.filter((r) => r.state === "discarded").length;
+  const discardedCount = (seedMeta?.alreadyTrackedCount ?? 0) + (seedMeta?.alreadyDismissedCount ?? 0)
+    + rows.filter((r) => r.state === "discarded").length;
+  const visibleRows = rows.filter((r) => r.state !== "discarded" && !r.dismissed);
 
   return (
     <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
@@ -219,18 +251,23 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
           <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
           <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
             Seeded from this workspace's biggest outliers, then checked against real TikTok data — a suggestion only
-            stays up if that check actually found videos.
+            stays up if that check actually found videos. Dismissed suggestions won't come back on future runs.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={runSuggest}
-          disabled={status === "seeding" || status === "verifying"}
-          className="shrink-0 rounded-md px-3 py-1.5"
-          style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: status === "seeding" || status === "verifying" ? 0.6 : 1 }}
-        >
-          {status === "seeding" ? "Thinking…" : status === "verifying" ? "Checking…" : "Suggest sources"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {status !== "idle" && (
+            <IconButton icon={<CloseIcon />} label="Close suggestions" onClick={closeAll} />
+          )}
+          <button
+            type="button"
+            onClick={runSuggest}
+            disabled={status === "seeding" || status === "verifying"}
+            className="shrink-0 rounded-md px-3 py-1.5"
+            style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: status === "seeding" || status === "verifying" ? 0.6 : 1 }}
+          >
+            {status === "seeding" ? "Thinking…" : status === "verifying" ? "Checking…" : "Suggest sources"}
+          </button>
+        </div>
       </div>
 
       {status === "error" && (
@@ -246,14 +283,14 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
               Checking {checkingCount} of {rows.length} candidate{rows.length === 1 ? "" : "s"} against real TikTok data…
             </p>
           )}
-          {rows.length === 0 ? (
+          {visibleRows.length === 0 ? (
             <p style={{ ...fB, fontSize: 13, color: T.muted }}>
               {seedMeta?.rawCandidateCount ?? 0} candidate{(seedMeta?.rawCandidateCount ?? 0) === 1 ? "" : "s"} proposed, none
-              survived verification (already tracked, or no real content found).
+              survived verification (already tracked, previously dismissed, or no real content found).
             </p>
           ) : (
             <div className="grid gap-3">
-              {rows.filter((r) => r.state !== "discarded").map((row) => {
+              {visibleRows.map((row) => {
                 const label = row.sourceType === "hashtag" ? `#${row.query}` : row.sourceType === "creator" ? `@${row.query}` : row.query;
                 const tracked = trackedQueries.has(row.query);
                 const s = row.suggestion;
@@ -264,24 +301,29 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
                         <div style={{ ...fB, fontSize: 14, fontWeight: 700 }}>{label}</div>
                         <div style={{ ...fM, fontSize: 11, color: T.muted }}>{row.sourceType}</div>
                       </div>
-                      {row.state === "checking" ? (
-                        <span style={{ ...fM, fontSize: 11, color: T.muted }}>Checking…</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => trackSuggestion(row)}
-                          disabled={tracked || trackingQuery === row.query}
-                          className="shrink-0 rounded-md px-3 py-1.5"
-                          style={{
-                            ...fB, fontSize: 12, fontWeight: 600,
-                            background: tracked ? T.line : T.signal,
-                            color: tracked ? T.muted : "#fff",
-                            opacity: trackingQuery === row.query ? 0.6 : 1,
-                          }}
-                        >
-                          {tracked ? "Tracked" : trackingQuery === row.query ? "Tracking…" : "Track this"}
-                        </button>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {row.state === "checking" ? (
+                          <span style={{ ...fM, fontSize: 11, color: T.muted }}>Checking…</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => trackSuggestion(row)}
+                            disabled={tracked || trackingQuery === row.query}
+                            className="shrink-0 rounded-md px-3 py-1.5"
+                            style={{
+                              ...fB, fontSize: 12, fontWeight: 600,
+                              background: tracked ? T.line : T.signal,
+                              color: tracked ? T.muted : "#fff",
+                              opacity: trackingQuery === row.query ? 0.6 : 1,
+                            }}
+                          >
+                            {tracked ? "Tracked" : trackingQuery === row.query ? "Tracking…" : "Track this"}
+                          </button>
+                        )}
+                        {!tracked && (
+                          <IconButton icon={<CloseIcon />} label="Not interested" onClick={() => dismissRow(row)} />
+                        )}
+                      </div>
                     </div>
                     <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.ink, lineHeight: 1.5 }}>{row.rationale}</p>
                     {s && (
@@ -304,7 +346,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
           )}
           {status === "done" && discardedCount > 0 && (
             <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
-              {discardedCount} candidate{discardedCount === 1 ? "" : "s"} didn't pan out (already tracked, or no real content found).
+              {discardedCount} candidate{discardedCount === 1 ? "" : "s"} didn't pan out (already tracked, previously dismissed, or no real content found).
             </p>
           )}
           {status === "done" && (

@@ -113,6 +113,13 @@ export const TrashIcon = () => (
   </svg>
 );
 
+export const CloseIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
 /**
  * Error/status banner for the outcome of an action (create, delete,
  * refresh, ...) — a bordered card instead of a bare line of red text, so
