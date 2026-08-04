@@ -321,7 +321,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
 
   return (
     <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
           <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
@@ -503,8 +503,13 @@ function EditVideoLimitDialog({ open, initialValue, busy, onCancel, onSave }) {
   );
 }
 
-function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
-  const navigate = useNavigate();
+/**
+ * Shared state + handlers behind a source's row — the desktop table row and
+ * the mobile card render this the same underlying entity in different DOM
+ * shapes (a <tr> can't have a <div> sibling in a <tbody>, so they can't be
+ * the same component), but neither should re-derive the actions themselves.
+ */
+function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
   const { showToast } = useToast();
   const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete" | "edit"
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -564,6 +569,53 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
     }
   }
 
+  return {
+    busyAction, busy, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
+    saveVideoLimit, toggleActive, doRefresh, doDelete,
+  };
+}
+
+/** The four per-row action icon buttons — identical on desktop and mobile. */
+function SourceRowActions({ source, issue, busyAction, busy, doRefresh, toggleActive, setEditingLimit, setConfirmDelete }) {
+  return (
+    <div className="flex items-center gap-1">
+      <IconButton
+        icon={<RefreshIcon />}
+        label={busyAction === "refresh" ? "Refreshing…" : issue?.errors?.length > 0 ? "Retry — last refresh had errors" : "Refresh now"}
+        disabled={busy}
+        tone={issue?.errors?.length > 0 ? "#B3261E" : T.signal}
+        onClick={doRefresh}
+      />
+      <IconButton
+        icon={source.isActive ? <PauseIcon /> : <PlayIcon />}
+        label={source.isActive ? "Pause tracking" : "Resume tracking"}
+        disabled={busy}
+        onClick={toggleActive}
+      />
+      <IconButton
+        icon={<EditIcon />}
+        label={`Edit video limit (currently ${source.videoLimit})`}
+        disabled={busy}
+        onClick={() => setEditingLimit(true)}
+      />
+      <IconButton
+        icon={<TrashIcon />}
+        label="Delete source"
+        disabled={busy}
+        danger
+        onClick={() => setConfirmDelete(true)}
+      />
+    </div>
+  );
+}
+
+function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
+  const navigate = useNavigate();
+  const {
+    busyAction, busy, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
+    saveVideoLimit, toggleActive, doRefresh, doDelete,
+  } = useSourceRowActions(source, accessToken, workspaceId, onChanged);
+
   // Row navigates to this source's gallery; clicks on an action button/link
   // inside it must not also trigger that navigation.
   function openGallery(e) {
@@ -609,34 +661,11 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
         </div>
       </td>
       <td className="py-3">
-        <div className="flex items-center gap-1">
-          <IconButton
-            icon={<RefreshIcon />}
-            label={busyAction === "refresh" ? "Refreshing…" : issue?.errors?.length > 0 ? "Retry — last refresh had errors" : "Refresh now"}
-            disabled={busy}
-            tone={issue?.errors?.length > 0 ? "#B3261E" : T.signal}
-            onClick={doRefresh}
-          />
-          <IconButton
-            icon={source.isActive ? <PauseIcon /> : <PlayIcon />}
-            label={source.isActive ? "Pause tracking" : "Resume tracking"}
-            disabled={busy}
-            onClick={toggleActive}
-          />
-          <IconButton
-            icon={<EditIcon />}
-            label={`Edit video limit (currently ${source.videoLimit})`}
-            disabled={busy}
-            onClick={() => setEditingLimit(true)}
-          />
-          <IconButton
-            icon={<TrashIcon />}
-            label="Delete source"
-            disabled={busy}
-            danger
-            onClick={() => setConfirmDelete(true)}
-          />
-        </div>
+        <SourceRowActions
+          source={source} issue={issue} busyAction={busyAction} busy={busy}
+          doRefresh={doRefresh} toggleActive={toggleActive}
+          setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
+        />
       </td>
       <EditVideoLimitDialog
         open={editingLimit}
@@ -656,6 +685,84 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
         onConfirm={doDelete}
       />
     </tr>
+  );
+}
+
+/**
+ * Mobile equivalent of SourceRow — same entity, same actions (via the same
+ * hook), stacked into a card instead of table columns, since a 5-column
+ * table with 4 icon actions has nowhere to go on a phone-width screen.
+ */
+function SourceCard({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
+  const navigate = useNavigate();
+  const {
+    busyAction, busy, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
+    saveVideoLimit, toggleActive, doRefresh, doDelete,
+  } = useSourceRowActions(source, accessToken, workspaceId, onChanged);
+
+  function openGallery(e) {
+    if (e.target.closest("button, a")) return;
+    navigate(`/gallery?sourceId=${source.id}`);
+  }
+
+  return (
+    <div
+      onClick={openGallery}
+      className="rounded-lg p-4"
+      style={{ border: `1px solid ${T.line}`, background: T.card }}
+    >
+      <div className="flex items-center gap-3">
+        <SourceThumb src={thumbUrl} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate" style={{ ...fB, fontSize: 14 }}>{source.query}</div>
+          <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5" style={{ ...fM, fontSize: 12, color: T.muted }}>
+        <span>{source.videoCount} video{source.videoCount === 1 ? "" : "s"}</span>
+        <span title={source.lastRefreshedAt ? new Date(source.lastRefreshedAt).toLocaleString() : undefined}>
+          {source.lastRefreshedAt ? fmtAge(new Date(source.lastRefreshedAt).getTime()) : "never"}
+        </span>
+        <span className="flex items-center gap-1.5" style={{ color: source.isActive ? T.teal : T.muted }}>
+          {busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}
+          {issue?.errors?.length > 0 && (
+            <IconButton
+              icon={<WarningIcon />}
+              label={`Last refresh (${new Date(issue.ranAt).toLocaleString()}): ${issue.errors.join(" · ")}`}
+              danger
+              onClick={() => {}}
+            />
+          )}
+        </span>
+      </div>
+
+      <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.line}` }}>
+        <SourceRowActions
+          source={source} issue={issue} busyAction={busyAction} busy={busy}
+          doRefresh={doRefresh} toggleActive={toggleActive}
+          setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
+        />
+      </div>
+
+      <EditVideoLimitDialog
+        open={editingLimit}
+        initialValue={source.videoLimit}
+        busy={busyAction === "edit"}
+        onCancel={() => setEditingLimit(false)}
+        onSave={saveVideoLimit}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this source?"
+        message={`Stops tracking "${source.query}" and removes it from Sources. Videos already scraped from it stay in your library.`}
+        confirmLabel="Delete"
+        danger
+        busy={busyAction === "delete"}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={doDelete}
+      />
+    </div>
   );
 }
 
@@ -780,19 +887,39 @@ export default function Sources() {
         ) : sources.length === 0 ? (
           <p style={{ fontSize: 14, color: T.muted }}>No sources tracked yet in this workspace.</p>
         ) : (
-          <table className="w-full" style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>SOURCE</th>
-                <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>VIDEOS</th>
-                <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>LAST REFRESH</th>
-                <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>STATUS</th>
-                <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop: table. A 5-column table with 4 icon actions per row
+                has nowhere to go on a phone screen, so mobile gets its own
+                stacked-card layout below instead of a squeezed/scrolling
+                table. */}
+            <table className="hidden sm:table w-full" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>SOURCE</th>
+                  <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>VIDEOS</th>
+                  <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>LAST REFRESH</th>
+                  <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>STATUS</th>
+                  <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sources.map((s) => (
+                  <SourceRow
+                    key={s.id}
+                    source={s}
+                    thumbUrl={topThumbs[s.id]}
+                    issue={refreshIssues[s.id]}
+                    accessToken={accessToken}
+                    workspaceId={activeWorkspaceId}
+                    onChanged={load}
+                  />
+                ))}
+              </tbody>
+            </table>
+
+            <div className="sm:hidden flex flex-col gap-3">
               {sources.map((s) => (
-                <SourceRow
+                <SourceCard
                   key={s.id}
                   source={s}
                   thumbUrl={topThumbs[s.id]}
@@ -802,8 +929,8 @@ export default function Sources() {
                   onChanged={load}
                 />
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
     </section>
