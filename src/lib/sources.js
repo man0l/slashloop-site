@@ -76,3 +76,16 @@ export function verifySuggestedSource(accessToken, workspaceId, candidate) {
     body: { workspaceId, sourceType: candidate.sourceType, query: candidate.query, rationale: candidate.rationale },
   });
 }
+
+/**
+ * POST /api/sources/suggest/dismiss { workspaceId, sourceType, query } ->
+ * records a "no thanks" on a suggested candidate — future suggestSources
+ * calls for this workspace won't propose it again.
+ */
+export function dismissSuggestedSource(accessToken, workspaceId, candidate) {
+  return apiFetch("/api/sources/suggest/dismiss", {
+    method: "POST",
+    accessToken,
+    body: { workspaceId, sourceType: candidate.sourceType, query: candidate.query },
+  });
+}
