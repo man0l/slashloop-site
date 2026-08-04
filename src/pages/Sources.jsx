@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { T, fD, fB, fM } from "../lib/theme.js";
+import { T, fD, fB, fM, fmtAge } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
@@ -353,7 +353,7 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
     try {
       await refreshSource(accessToken, workspaceId, source.id);
       showToast("Refresh queued — new videos will show up shortly.", { type: "success" });
-      onChanged();
+      onChanged(source.id);
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.", { type: "error" });
     } finally {
@@ -399,8 +399,12 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
         </div>
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>{source.videoCount}</td>
-      <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: T.muted }}>
-        {source.lastRefreshedAt ? new Date(source.lastRefreshedAt).toLocaleDateString() : "never"}
+      <td
+        className="py-3 pr-4"
+        style={{ ...fM, fontSize: 12, color: T.muted }}
+        title={source.lastRefreshedAt ? new Date(source.lastRefreshedAt).toLocaleString() : undefined}
+      >
+        {source.lastRefreshedAt ? fmtAge(new Date(source.lastRefreshedAt).getTime()) : "never"}
       </td>
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: source.isActive ? T.teal : T.muted }}>
         <div className="flex items-center gap-1.5">
@@ -479,75 +483,76 @@ export default function Sources() {
   // refresh run, so a scrape failure (bad query, scoring error, timeout) is
   // visible in the row instead of only in server logs.
   const [refreshIssues, setRefreshIssues] = useState({});
+  // ids we've already fetched thumb/issue data for — so re-loading the list
+  // after one row's action (refresh, edit, ...) doesn't refetch every other
+  // row's thumb + refresh-issue data too. Only ids new to the list, or an
+  // id explicitly passed to load() as "this row changed", get (re)fetched.
+  const fetchedRowIds = useRef(new Set());
 
-  const load = useCallback(() => {
+  const loadRowData = useCallback((ids) => {
+    if (!accessToken || !activeWorkspaceId || ids.length === 0) return;
+    ids.forEach((id) => fetchedRowIds.current.add(id));
+
+    ids.forEach((id) => {
+      getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: id, sortBy: "outlier_score", limit: 1 })
+        .then((r) => setTopThumbs((prev) => ({ ...prev, [id]: r.cards?.[0]?.thumbUrl ?? null })))
+        .catch(() => {});
+
+      getSource(accessToken, activeWorkspaceId, id)
+        .then((full) => {
+          const run = full.refreshRuns?.[0];
+          const job = full.lastRefreshJob;
+
+          // A refusal (insufficient credits, Apify cap breach) never
+          // reaches the point where a RefreshRun row gets written — so a
+          // source can fail every attempt and `refreshRuns` stays empty.
+          // If the last refresh JOB is a failure and it's more recent than
+          // the last refresh RUN (or there is no run at all), that refusal
+          // is the real story, not whatever the last successful run said.
+          if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
+            setRefreshIssues((prev) => ({ ...prev, [id]: { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt } }));
+            return;
+          }
+
+          if (!run) {
+            setRefreshIssues((prev) => ({ ...prev, [id]: null }));
+            return;
+          }
+          // "(cosmetic only)" is the connector's own marker for notices that
+          // aren't actual failures (e.g. thumbnail ingest deferred to stay
+          // inside a time budget) — don't surface those as warnings.
+          const errors = JSON.parse(run.errorsJson || "[]").filter((e) => !e.includes("(cosmetic only)"));
+          setRefreshIssues((prev) => ({ ...prev, [id]: errors.length ? { errors, ranAt: run.ranAt } : null }));
+        })
+        .catch(() => {});
+    });
+  }, [accessToken, activeWorkspaceId]);
+
+  // Pass a sourceId when only that one row changed (refresh, edit, ...) so
+  // its thumb/issue get refetched without touching every other row; omit it
+  // for a full reload (initial load, workspace switch, new source tracked)
+  // — any id not yet fetched picks up row data automatically.
+  const load = useCallback((affectedId) => {
     if (!accessToken || !activeWorkspaceId) return;
     listSources(accessToken, activeWorkspaceId)
-      .then(setSources)
+      .then((list) => {
+        setSources(list);
+        const ids = affectedId
+          ? [affectedId]
+          : list.map((s) => s.id).filter((id) => !fetchedRowIds.current.has(id));
+        loadRowData(ids);
+      })
       .catch((err) => setError(err instanceof SourcesApiError ? err.message : "Couldn't load sources."));
-  }, [accessToken, activeWorkspaceId]);
+  }, [accessToken, activeWorkspaceId, loadRowData]);
 
   useEffect(() => {
     setSources(null);
     setError("");
     setTopThumbs({});
     setRefreshIssues({});
+    fetchedRowIds.current = new Set();
     load();
   }, [load]);
-
-  useEffect(() => {
-    if (!accessToken || !activeWorkspaceId || !sources?.length) return;
-    let cancelled = false;
-    Promise.all(
-      sources.map((s) =>
-        getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: s.id, sortBy: "outlier_score", limit: 1 })
-          .then((r) => [s.id, r.cards?.[0]?.thumbUrl ?? null])
-          .catch(() => [s.id, null]),
-      ),
-    ).then((entries) => {
-      if (!cancelled) setTopThumbs(Object.fromEntries(entries));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, activeWorkspaceId, sources]);
-
-  useEffect(() => {
-    if (!accessToken || !activeWorkspaceId || !sources?.length) return;
-    let cancelled = false;
-    Promise.all(
-      sources.map((s) =>
-        getSource(accessToken, activeWorkspaceId, s.id)
-          .then((full) => {
-            const run = full.refreshRuns?.[0];
-            const job = full.lastRefreshJob;
-
-            // A refusal (insufficient credits, Apify cap breach) never
-            // reaches the point where a RefreshRun row gets written — so a
-            // source can fail every attempt and `refreshRuns` stays empty.
-            // If the last refresh JOB is a failure and it's more recent than
-            // the last refresh RUN (or there is no run at all), that refusal
-            // is the real story, not whatever the last successful run said.
-            if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
-              return [s.id, { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt }];
-            }
-
-            if (!run) return [s.id, null];
-            // "(cosmetic only)" is the connector's own marker for notices that
-            // aren't actual failures (e.g. thumbnail ingest deferred to stay
-            // inside a time budget) — don't surface those as warnings.
-            const errors = JSON.parse(run.errorsJson || "[]").filter((e) => !e.includes("(cosmetic only)"));
-            return [s.id, errors.length ? { errors, ranAt: run.ranAt } : null];
-          })
-          .catch(() => [s.id, null]),
-      ),
-    ).then((entries) => {
-      if (!cancelled) setRefreshIssues(Object.fromEntries(entries));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, activeWorkspaceId, sources]);
 
   if (authLoading) return null;
   if (!user) return <Navigate to="/login?next=/sources" replace />;
