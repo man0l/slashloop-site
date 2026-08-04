@@ -122,6 +122,17 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
  * them (a real Apify scrape can take anywhere from a few seconds to well
  * over a minute).
  */
+// How long a verified-but-untouched suggestion sits before it's treated as
+// a quiet rejection on its own, without waiting for the batch to be
+// abandoned (a new run, closing the panel, or navigating away). Long enough
+// to actually read the card and decide; short enough that just not acting
+// on it doesn't take forever to "count".
+const IMPLICIT_REJECT_AFTER_MS = 60_000;
+
+function rowKey(row) {
+  return `${row.sourceType}:${row.query}`;
+}
+
 function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   const { showToast } = useToast();
   const [status, setStatus] = useState("idle"); // idle | seeding | verifying | done | error
@@ -140,6 +151,33 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   const trackedRef = useRef(trackedQueries);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
   useEffect(() => { trackedRef.current = trackedQueries; }, [trackedQueries]);
+
+  // rowKey -> setTimeout id, for the idle-rejection timers started below.
+  const timersRef = useRef({});
+
+  function clearImplicitRejectTimer(key) {
+    clearTimeout(timersRef.current[key]);
+    delete timersRef.current[key];
+  }
+
+  function clearAllImplicitRejectTimers() {
+    Object.keys(timersRef.current).forEach(clearImplicitRejectTimer);
+  }
+
+  // Starts the idle clock the moment a suggestion is verified — the same
+  // "seen it, didn't act on it" rule as abandoning the whole batch, just
+  // without requiring the batch to actually be abandoned first. Canceled if
+  // the row gets tracked or explicitly dismissed before it fires.
+  function scheduleImplicitReject(row) {
+    const key = rowKey(row);
+    clearImplicitRejectTimer(key);
+    timersRef.current[key] = setTimeout(() => {
+      delete timersRef.current[key];
+      const current = rowsRef.current.find((r) => rowKey(r) === key);
+      if (!current || current.dismissed || trackedRef.current.has(row.query)) return;
+      dismissSuggestedSource(accessToken, workspaceId, row).catch(() => {});
+    }, IMPLICIT_REJECT_AFTER_MS);
+  }
 
   // Flip "verifying" -> "done" once every row has left "checking", so the
   // header can stop saying "Checking N candidates…".
@@ -165,12 +203,14 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   // screen — same "seen it, didn't track it" rule as closing the panel.
   useEffect(() => {
     return () => {
+      clearAllImplicitRejectTimers();
       persistUnactionedAsRejected(rowsRef.current, trackedRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function runSuggest() {
+    clearAllImplicitRejectTimers();
     persistUnactionedAsRejected(rows, trackedQueries);
     setStatus("seeding");
     setErrorMsg("");
@@ -208,6 +248,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
               suggestion: r.verified ? r.suggestion : undefined,
               error: !r.ok ? r.error : undefined,
             })));
+            if (r.verified) scheduleImplicitReject(candidate);
           })
           .catch((err) => {
             setRows((prev) => prev.map((row) => (row.sourceType !== candidate.sourceType || row.query !== candidate.query ? row : {
@@ -224,6 +265,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   }
 
   async function trackSuggestion(s) {
+    clearImplicitRejectTimer(rowKey(s));
     setTrackingQuery(s.query);
     try {
       const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType: s.sourceType, query: s.query, videoLimit: 20 });
@@ -247,6 +289,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   // so a future "Suggest sources" run for this workspace won't propose it
   // again either.
   async function dismissRow(row) {
+    clearImplicitRejectTimer(rowKey(row));
     setRows((prev) => prev.map((r) => (r.sourceType !== row.sourceType || r.query !== row.query ? r : { ...r, dismissed: true })));
     try {
       await dismissSuggestedSource(accessToken, workspaceId, row);
@@ -261,6 +304,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
   // Closes the whole panel back to its idle state. Suggest sources still
   // works right after — it's a fresh run, not a disabled button.
   function closeAll() {
+    clearAllImplicitRejectTimers();
     persistUnactionedAsRejected(rows, trackedQueries);
     setStatus("idle");
     setRows([]);
@@ -282,8 +326,8 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
           <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
           <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
             Seeded from this workspace's biggest outliers, then checked against real TikTok data — a suggestion only
-            stays up if that check actually found videos. A suggestion you don't track — dismissed or just left
-            behind — won't come back on future runs.
+            stays up if that check actually found videos. A suggestion you don't track — dismissed, or just left
+            untouched for a minute — won't come back on future runs.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
