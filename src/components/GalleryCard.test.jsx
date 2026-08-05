@@ -130,6 +130,26 @@ describe("GalleryCard — analyze flow", () => {
     expect(analyzeVideo).not.toHaveBeenCalled();
   });
 
+  it("already-analyzed video offers a re-analyze icon that re-runs the analysis", async () => {
+    getVideoDetail.mockResolvedValue(detailFor()); // already analyzed
+    analyzeVideo.mockResolvedValueOnce({ queued: false }); // re-analyze succeeds
+    getVideoDetail.mockResolvedValueOnce(detailFor({ analysis: { ...detailFor().analysis } })); // refreshed result
+
+    renderCard();
+    fireEvent.mouseEnter(screen.getByText("@maker").closest("article"));
+
+    await waitFor(() => expect(screen.getByText("View analysis →")).toBeInTheDocument());
+
+    const reAnalyze = screen.getByRole("button", { name: "Re-analyze this video" });
+    expect(reAnalyze).toBeInTheDocument();
+
+    fireEvent.click(reAnalyze);
+
+    await waitFor(() => expect(analyzeVideo).toHaveBeenCalledWith("tok-1", { workspaceId: "ws-1", videoId: "vid-1" }));
+    // After re-analysis completes, the done state is shown again.
+    await waitFor(() => expect(screen.getByText("View analysis →")).toBeInTheDocument());
+  });
+
   it("clicking Analyze posts the job and renders the analysis + summary once done", async () => {
     getVideoDetail.mockResolvedValueOnce(unexploredDetail); // hydrate on hover
     analyzeVideo.mockResolvedValueOnce({ queued: false }); // inline text success
