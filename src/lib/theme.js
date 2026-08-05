@@ -41,3 +41,11 @@ export const fmtAge = (ms) => {
   if (mo < 12) return `${mo}mo`;
   return `${Math.floor(day / 365)}y`;
 };
+
+// Seconds -> "m:ss" for key moments / beats that carry timestamps.
+export const fmtTime = (sec) => {
+  if (typeof sec !== "number" || !Number.isFinite(sec) || sec < 0) return "";
+  const s = Math.round(sec);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+};

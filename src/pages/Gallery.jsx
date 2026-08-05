@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { T, fD, fB, fM, fmt, fmtAge } from "../lib/theme.js";
+import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { listSources } from "../lib/sources.js";
 import { getGallery, GalleryApiError } from "../lib/gallery.js";
+import GalleryCard from "../components/GalleryCard.jsx";
 
 const selectStyle = { ...fB, fontSize: 13, padding: "7px 9px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
 const PAGE_SIZE = 24;
@@ -16,81 +17,6 @@ const SORT_OPTIONS = [
   { value: "views", label: "Most views" },
   { value: "newest", label: "Newest" },
 ];
-
-function Thumb({ src }) {
-  const [failed, setFailed] = useState(false);
-  const boxStyle = { width: "100%", aspectRatio: "9/16", background: "#E7E8E3" };
-
-  if (!src || failed) {
-    return (
-      <div className="flex items-center justify-center" style={boxStyle}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="1.5" aria-hidden="true">
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-          <path d="M3 15l4.5-4.5a2 2 0 0 1 2.8 0L15 15" />
-          <circle cx="8.5" cy="9" r="1.5" />
-        </svg>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-      style={{ ...boxStyle, objectFit: "cover", display: "block" }}
-    />
-  );
-}
-
-function Card({ card, index }) {
-  return (
-    <article
-      className="relative rounded-lg overflow-hidden flex flex-col transition-transform duration-200 ease-out will-change-transform hover:-translate-y-1.5 hover:shadow-xl"
-      style={{ border: `1px solid ${T.line}`, background: T.card }}
-    >
-      {index != null && (
-        <span
-          className="absolute top-2 left-2 flex items-center justify-center rounded-full"
-          style={{ ...fM, fontSize: 11, fontWeight: 700, width: 22, height: 22, background: "rgba(20,24,29,0.75)", color: "#fff" }}
-          title={`Video #${index} — reference this as "video ${index}"`}
-        >
-          {index}
-        </span>
-      )}
-      <Thumb src={card.thumbUrl} />
-      <div className="p-3 flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2" style={{ ...fM, fontSize: 12, color: T.muted }}>
-          <strong className="truncate" style={{ color: T.ink, maxWidth: "100%" }}>@{card.creatorHandle}</strong>
-          <span className="whitespace-nowrap">{fmt(card.views)} views</span>
-          {card.postedAt != null && (
-            <span className="whitespace-nowrap" title={new Date(card.postedAt).toLocaleString()}>
-              {fmtAge(card.postedAt)}
-            </span>
-          )}
-          {card.outlierScore != null && (
-            <span
-              className="whitespace-nowrap rounded px-1.5 py-0.5"
-              style={{ fontWeight: 700, color: T.signal, background: "#FFF0E8" }}
-            >
-              {card.outlierScore.toFixed(1)}x
-            </span>
-          )}
-        </div>
-        <p style={{ ...fB, fontSize: 13, color: T.ink, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", margin: 0 }}>
-          {card.caption || <em>no caption</em>}
-        </p>
-        {card.mediaUrl && (
-          <video controls playsInline preload="none" src={card.mediaUrl} style={{ width: "100%", borderRadius: 6, background: "#000" }} />
-        )}
-        <a href={card.url} target="_blank" rel="noreferrer" style={{ ...fM, fontSize: 11, color: T.muted }}>
-          open on TikTok
-        </a>
-      </div>
-    </article>
-  );
-}
 
 export default function Gallery() {
   const { user, loading: authLoading, accessToken } = useAuth();
@@ -190,7 +116,9 @@ export default function Gallery() {
         ) : (
           <>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-              {cards.map((c, i) => <Card key={c.id} card={c} index={i + 1} />)}
+              {cards.map((c, i) => (
+                <GalleryCard key={c.id} card={c} index={i + 1} accessToken={accessToken} workspaceId={activeWorkspaceId} />
+              ))}
             </div>
             {cards.length >= limit && (
               <div className="mt-6 text-center">
