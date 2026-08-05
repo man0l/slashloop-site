@@ -224,14 +224,22 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
                 ))}
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => setShowAnalysis(true)}
-              className="self-start font-semibold underline decoration-dotted underline-offset-2"
-              style={{ ...fB, fontSize: 12, color: T.teal }}
-            >
-              View analysis →
-            </button>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowAnalysis(true)}
+                className="font-semibold underline decoration-dotted underline-offset-2"
+                style={{ ...fB, fontSize: 12, color: T.teal }}
+              >
+                View analysis →
+              </button>
+              <IconButton
+                icon={<RefreshIcon />}
+                label="Re-analyze this video"
+                disabled={busy}
+                onClick={retry}
+              />
+            </div>
           </div>
         )}
 
