@@ -120,6 +120,24 @@ export const CloseIcon = () => (
   </svg>
 );
 
+// The "Analyze with Gemini" action — a sparkle reads as generative/AI without
+// adding a word next to the glyph.
+export const SparkleIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <path d="M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7Z" />
+    <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z" />
+  </svg>
+);
+
+// Indeterminate progress ("Analyzing…") — a rotating arc, Tailwind's
+// animate-spin drives the motion.
+export const Spinner = () => (
+  <svg className="animate-spin" {...ICON_PROPS} aria-hidden="true">
+    <circle cx="12" cy="12" r="9" opacity="0.25" />
+    <path d="M21 12a9 9 0 0 0-9-9" />
+  </svg>
+);
+
 /**
  * Error/status banner for the outcome of an action (create, delete,
  * refresh, ...) — a bordered card instead of a bare line of red text, so
