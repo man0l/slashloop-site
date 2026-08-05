@@ -74,8 +74,7 @@ const renderCard = () =>
   render(<GalleryCard card={card} index={1} accessToken="tok-1" workspaceId="ws-1" />);
 
 describe("GalleryCard — analyze flow", () => {
-  it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {
-    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
+  it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
     getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
 
     render(<GalleryCard card={{ ...card, mediaUrl: "https://media/1.mp4" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
@@ -85,6 +84,33 @@ describe("GalleryCard — analyze flow", () => {
     expect(video).not.toBeNull();
     expect(video.getAttribute("src")).toBe("https://media/1.mp4");
     // Not analyzed yet, so no summary/details — the analyze affordance remains.
+    expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
+  });
+
+  it("scrape failure: shows a warning icon + tooltip and a note when the card carries a fetchError and has no media", async () => {
+    getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null });
+
+    render(
+      <GalleryCard
+        card={{
+          ...card,
+          mediaUrl: null,
+          fetchError: { code: "apify_spend_cap", message: "Apify monthly spend cap reached — scraping is paused." },
+        }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+
+    // Warning icon button whose tooltip is the scrape message (Sources-style).
+    expect(
+      screen.getByRole("button", { name: "Apify monthly spend cap reached — scraping is paused." }),
+    ).toBeInTheDocument();
+    // Note where the video would be.
+    expect(screen.getByText(/Couldn't scrape this video/)).toBeInTheDocument();
+    // No video to play, no analysis summary.
+    expect(document.querySelector("video")).toBeNull();
     expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
   });
 
