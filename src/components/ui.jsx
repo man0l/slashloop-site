@@ -44,7 +44,7 @@ export function GhostButton({ to, onClick, children }) {
  */
 export function IconButton({ icon, label, onClick, disabled, tone, danger }) {
   return (
-    <span className="relative inline-flex group">
+    <span className="relative inline-flex group/icon-button">
       <button
         type="button"
         onClick={onClick}
@@ -57,7 +57,7 @@ export function IconButton({ icon, label, onClick, disabled, tone, danger }) {
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-2 py-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 z-10"
+        className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-2 py-1 opacity-0 transition-opacity group-hover/icon-button:opacity-100 group-focus-within/icon-button:opacity-100 z-10"
         style={{ ...fM, fontSize: 11, background: T.ink, color: "#fff" }}
       >
         {label}
