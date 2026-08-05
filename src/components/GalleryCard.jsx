@@ -58,6 +58,11 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
   const mediaUrl = detail?.mediaUrl ?? card.mediaUrl;
   const keyMoments = Array.isArray(analysis?.keyMoments) ? analysis.keyMoments : [];
 
+  // Why this video couldn't be scraped (Apify etc.) — the connector attaches a
+  // fetchError to cards that have no stored media. Only surface it while there
+  // is genuinely no video to play; once media appears the icon falls away.
+  const scrapeError = card.fetchError && !mediaUrl ? card.fetchError : null;
+
   function seekAndPlay(sec) {
     setShowAnalysis(false);
     const v = videoRef.current;
@@ -142,11 +147,22 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
               {card.outlierScore.toFixed(1)}x
             </span>
           )}
+          {scrapeError && (
+            <IconButton icon={<WarningIcon />} label={scrapeError.message} danger onClick={() => {}} />
+          )}
         </div>
 
         <p style={{ ...fB, fontSize: 13, color: T.ink, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", margin: 0 }}>
           {card.caption || <em>no caption</em>}
         </p>
+
+        {/* Scrape failure — mirrors the connector gallery's note, so the card
+            says why there's no video instead of silently showing a thumbnail. */}
+        {scrapeError && (
+          <p style={{ ...fB, fontSize: 12, color: "#B3261E", margin: 0 }}>
+            Couldn't scrape this video — {scrapeError.message}
+          </p>
+        )}
 
         {/* Failure — the Sources-list error pattern: warning icon + tooltip with
             the description; retry icon only when a retry can actually help. */}
