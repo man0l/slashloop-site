@@ -74,6 +74,20 @@ const renderCard = () =>
   render(<GalleryCard card={card} index={1} accessToken="tok-1" workspaceId="ws-1" />);
 
 describe("GalleryCard — analyze flow", () => {
+  it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {
+    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
+    getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
+
+    render(<GalleryCard card={{ ...card, mediaUrl: "https://media/1.mp4" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+
+    // Video renders immediately on load — no hover/analyze needed.
+    const video = document.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video.getAttribute("src")).toBe("https://media/1.mp4");
+    // Not analyzed yet, so no summary/details — the analyze affordance remains.
+    expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
+  });
+
   it("already-analyzed video on hover swaps the thumbnail for the playable video and offers the details, not a re-charge", async () => {
     getVideoDetail.mockResolvedValue(detailFor());
 

@@ -84,9 +84,11 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
         </span>
       )}
 
-      {/* Thumb stage — the thumbnail stands in until an analysis swaps in the video */}
+      {/* Thumb stage — once the media is downloaded (signed mediaUrl present)
+          the playable video replaces the thumbnail; the thumbnail is only a
+          placeholder for videos whose storage copy isn't available yet. */}
       <div className="relative overflow-hidden rounded-t-lg">
-        {handled && mediaUrl ? (
+        {mediaUrl ? (
           <video
             ref={videoRef}
             src={mediaUrl}
