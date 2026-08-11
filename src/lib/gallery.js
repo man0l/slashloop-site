@@ -8,11 +8,15 @@ export const GalleryApiError = ApiError;
 
 /**
  * GET /api/gallery-data -> { cards, note, filters }
- * opts: { workspaceId, sourceId?, sortBy?: "outlier_score"|"views"|"newest", minOutlier?, minViews?, limit? }
+ * opts: { workspaceId, sourceId?, sortBy?: "outlier_score"|"views"|"newest",
+ *         minOutlier?, minViews?, analyzedBy?: "openrouter", limit? }
+ *
+ * analyzedBy restricts to videos whose most recent analysis ran on that backend
+ * (see the connector's buildCards), ordered most-recently-analyzed first.
  */
 export function getGallery(accessToken, opts) {
-  const { workspaceId, sourceId, sortBy, minOutlier, minViews, limit } = opts;
-  const raw = { workspaceId, sourceId, sortBy, minOutlier, minViews, limit };
+  const { workspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy, limit } = opts;
+  const raw = { workspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy, limit };
   const clean = Object.fromEntries(
     Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && v !== ""),
   );

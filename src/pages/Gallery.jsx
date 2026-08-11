@@ -29,6 +29,7 @@ export default function Gallery() {
   const [sortBy, setSortBy] = useState("outlier_score");
   const [minOutlier, setMinOutlier] = useState(0);
   const [minViews, setMinViews] = useState(0);
+  const [analyzedBy, setAnalyzedBy] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -41,7 +42,7 @@ export default function Gallery() {
   // Any filter change resets to the first page of results.
   useEffect(() => {
     setLimit(PAGE_SIZE);
-  }, [activeWorkspaceId, sourceId, sortBy, minOutlier, minViews]);
+  }, [activeWorkspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy]);
 
   function updateSourceId(id) {
     setSourceId(id);
@@ -51,10 +52,10 @@ export default function Gallery() {
   const load = useCallback(() => {
     if (!accessToken || !activeWorkspaceId) return;
     setError("");
-    getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: sourceId || undefined, sortBy, minOutlier, minViews, limit })
+    getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: sourceId || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined, limit })
       .then(setResult)
       .catch((err) => setError(err instanceof GalleryApiError ? err.message : "Couldn't load gallery."));
-  }, [accessToken, activeWorkspaceId, sourceId, sortBy, minOutlier, minViews, limit]);
+  }, [accessToken, activeWorkspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy, limit]);
 
   useEffect(() => {
     load();
@@ -100,6 +101,13 @@ export default function Gallery() {
           <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN VIEWS</span>
           <select value={minViews} onChange={(e) => setMinViews(Number(e.target.value))} style={selectStyle}>
             {[0, 10000, 100000, 1000000, 10000000].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${fmt(v)}`}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ ...fM, fontSize: 11, color: T.muted }}>ANALYZED BY</span>
+          <select value={analyzedBy} onChange={(e) => setAnalyzedBy(e.target.value)} style={selectStyle}>
+            <option value="">Any</option>
+            <option value="openrouter">OpenRouter</option>
           </select>
         </label>
       </div>
