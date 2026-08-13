@@ -8,6 +8,7 @@ import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
 import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, verifySuggestedSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
 import { getGallery } from "../lib/gallery.js";
+import { parseRefreshFailures } from "../lib/refreshLog.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
 const SOURCE_TYPES = ["creator", "keyword", "hashtag"];
@@ -814,10 +815,11 @@ export default function Sources() {
             setRefreshIssues((prev) => ({ ...prev, [id]: null }));
             return;
           }
-          // "(cosmetic only)" is the connector's own marker for notices that
-          // aren't actual failures (e.g. thumbnail ingest deferred to stay
-          // inside a time budget) — don't surface those as warnings.
-          const errors = JSON.parse(run.errorsJson || "[]").filter((e) => !e.includes("(cosmetic only)"));
+          // errorsJson is the run's whole log, including bookkeeping the
+          // connector keeps for support ("Refresh policy: mode=incremental
+          // limit=5", "Already known: 1/3 results were existing videos").
+          // Only the failures belong in the UI — see src/lib/refreshLog.js.
+          const errors = parseRefreshFailures(run.errorsJson);
           setRefreshIssues((prev) => ({ ...prev, [id]: errors.length ? { errors, ranAt: run.ranAt } : null }));
         })
         .catch(() => {});
