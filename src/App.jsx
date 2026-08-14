@@ -13,6 +13,7 @@ const Pricing = lazy(() => import("./pages/Pricing.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Account = lazy(() => import("./pages/Account.jsx"));
 const Sources = lazy(() => import("./pages/Sources.jsx"));
+const Discover = lazy(() => import("./pages/Discover.jsx"));
 const Gallery = lazy(() => import("./pages/Gallery.jsx"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess.jsx"));
 const BillingCancel = lazy(() => import("./pages/BillingCancel.jsx"));
@@ -57,6 +58,7 @@ function Nav() {
 
   const loggedInLinks = (
     <>
+      <Link to="/discover" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Discover</Link>
       <Link to="/sources" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Sources</Link>
       <Link to="/gallery" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Gallery</Link>
     </>
@@ -161,6 +163,7 @@ export default function App() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/discover" element={<Discover />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/billing/success" element={<BillingSuccess />} />
