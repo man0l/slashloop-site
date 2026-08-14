@@ -114,6 +114,37 @@ describe("GalleryCard — analyze flow", () => {
     expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
   });
 
+  it("slideshow: renders the photo carousel instead of a video or scrape error", async () => {
+    getVideoDetail.mockResolvedValue({
+      ...unexploredDetail,
+      mediaUrl: null,
+      slideshowImages: ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"],
+    });
+
+    render(
+      <GalleryCard
+        card={{
+          ...card,
+          mediaUrl: null,
+          slideshowImages: ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"],
+        }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+
+    expect(document.querySelector("video")).toBeNull();
+    expect(screen.queryByText(/Couldn't scrape this video/)).not.toBeInTheDocument();
+    const img = document.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img.getAttribute("src")).toBe("https://cdn.example/a.jpg");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next slide" }));
+    expect(document.querySelector("img").getAttribute("src")).toBe("https://cdn.example/b.jpg");
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+  });
+
   it("already-analyzed video on hover swaps the thumbnail for the playable video and offers the details, not a re-charge", async () => {
     getVideoDetail.mockResolvedValue(detailFor());
 

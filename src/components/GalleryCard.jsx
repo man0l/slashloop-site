@@ -20,6 +20,52 @@ import AnalysisModal from "./AnalysisModal.jsx";
 
 const thumbStyle = { width: "100%", aspectRatio: "9/16", background: "#E7E8E3" };
 
+function Slideshow({ images }) {
+  const [i, setI] = useState(0);
+  const n = images.length;
+  if (!n) return null;
+  const prev = (e) => { e.stopPropagation(); setI((x) => (x - 1 + n) % n); };
+  const next = (e) => { e.stopPropagation(); setI((x) => (x + 1) % n); };
+
+  return (
+    <div className="relative" style={{ ...thumbStyle, background: "#111" }}>
+      <img
+        src={images[i]}
+        alt=""
+        style={{ ...thumbStyle, objectFit: "cover", display: "block" }}
+      />
+      {n > 1 && (
+        <>
+          <button
+            type="button"
+            aria-label="Previous slide"
+            onClick={prev}
+            className="absolute left-1.5 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full"
+            style={{ background: "rgba(20,24,29,0.7)", color: "#fff", ...fB, fontSize: 16 }}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="Next slide"
+            onClick={next}
+            className="absolute right-1.5 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full"
+            style={{ background: "rgba(20,24,29,0.7)", color: "#fff", ...fB, fontSize: 16 }}
+          >
+            ›
+          </button>
+          <span
+            className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full px-2 py-0.5"
+            style={{ ...fM, fontSize: 11, background: "rgba(20,24,29,0.75)", color: "#fff" }}
+          >
+            {i + 1}/{n}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Thumb({ src }) {
   const [failed, setFailed] = useState(false);
 
@@ -56,12 +102,15 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
 
   const analysis = detail?.analysis?.data;
   const mediaUrl = detail?.mediaUrl ?? card.mediaUrl;
+  const slideshowImages = (detail?.slideshowImages ?? card.slideshowImages ?? []).filter(
+    (u) => typeof u === "string" && u.startsWith("http"),
+  );
   const keyMoments = Array.isArray(analysis?.keyMoments) ? analysis.keyMoments : [];
 
   // Why this video couldn't be scraped (Apify etc.) — the connector attaches a
   // fetchError to cards that have no stored media. Only surface it while there
-  // is genuinely no video to play; once media appears the icon falls away.
-  const scrapeError = card.fetchError && !mediaUrl ? card.fetchError : null;
+  // is genuinely no video or slideshow to play; once media appears the icon falls away.
+  const scrapeError = card.fetchError && !mediaUrl && slideshowImages.length === 0 ? card.fetchError : null;
 
   function seekAndPlay(sec) {
     setShowAnalysis(false);
@@ -102,6 +151,8 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
             preload="metadata"
             style={{ ...thumbStyle, objectFit: "cover", display: "block", background: "#000" }}
           />
+        ) : slideshowImages.length > 0 ? (
+          <Slideshow images={slideshowImages} />
         ) : (
           <Thumb src={card.thumbUrl} />
         )}
