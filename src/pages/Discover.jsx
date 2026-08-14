@@ -102,6 +102,12 @@ function aggregate(mines) {
 }
 
 function evidenceFor(s, totalSampled) {
+  // Probed seeds (any sourceType) carry their own probe stats — checked
+  // FIRST, so a live #hashtag seed doesn't fall into the mined-hashtag
+  // branch and print "Seen in undefined of N videos".
+  if (s.sampleCount !== undefined) {
+    return `Probed directly · ${s.sampleCount} videos found, top ${fmt(s.topViews)} views`;
+  }
   if (s.sourceType === "hashtag") {
     return `Seen in ${s.videoCount} of ${totalSampled} sampled videos · avg ${fmt(s.avgViews)} views`;
   }
@@ -109,7 +115,7 @@ function evidenceFor(s, totalSampled) {
     const followers = s.followers ? ` · ${fmt(s.followers)} followers` : "";
     return `${s.videoCount} sampled video${s.videoCount === 1 ? "" : "s"} · median ${fmt(s.medianViews)} views${followers}`;
   }
-  return `Probed directly · ${s.sampleCount} videos found, top ${fmt(s.topViews)} views`;
+  return "";
 }
 
 function SuggestionCard({ suggestion, totalSampled, tracked, tracking, onTrack, onDismiss }) {
@@ -150,13 +156,14 @@ function SuggestionCard({ suggestion, totalSampled, tracked, tracking, onTrack, 
 }
 
 function SeedChip({ seed, result }) {
+  // NOTE: no eager object literal here — "probing" means result is undefined,
+  // and a { error: result.error } literal reads it anyway and crashes the
+  // page the moment the first seed chip renders (before any probe resolves).
   const state = !result ? "probing" : result.error ? "error" : result.verified ? "live" : "dead";
-  const note = {
-    probing: "Probing…",
-    error: result.error,
-    live: `${result.sampleCount} videos`,
-    dead: "no content",
-  }[state];
+  const note = state === "live" ? `${result.sampleCount} videos`
+    : state === "probing" ? "Probing…"
+    : state === "error" ? "failed"
+    : "no content";
   return (
     <span
       className="rounded-full px-3 py-1.5 inline-flex items-center gap-2"
@@ -164,9 +171,7 @@ function SeedChip({ seed, result }) {
     >
       <span style={{ ...fB, fontSize: 12, fontWeight: 600, color: T.ink }}>{seedLabel(seed)}</span>
       {seed.alreadyTracked && <span style={{ ...fM, fontSize: 10, color: T.teal }}>tracked</span>}
-      <span style={{ ...fM, fontSize: 10, color: state === "live" ? T.teal : T.muted }}>
-        {state === "error" ? "failed" : note}
-      </span>
+      <span style={{ ...fM, fontSize: 10, color: state === "live" ? T.teal : T.muted }}>{note}</span>
     </span>
   );
 }
