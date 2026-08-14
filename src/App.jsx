@@ -1,16 +1,22 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { T, fD, fM, FONTS } from "./lib/theme.js";
-import { CTAButton, GhostButton } from "./components/ui.jsx";
+import { CTAButton, GhostButton, Spinner } from "./components/ui.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { useAuth } from "./lib/auth.jsx";
 import Home from "./pages/Home.jsx";
-import Pricing from "./pages/Pricing.jsx";
-import Login from "./pages/Login.jsx";
-import Account from "./pages/Account.jsx";
-import Sources from "./pages/Sources.jsx";
-import Gallery from "./pages/Gallery.jsx";
-import BillingSuccess from "./pages/BillingSuccess.jsx";
-import BillingCancel from "./pages/BillingCancel.jsx";
+
+// The landing page ships in the entry chunk (it's what first-time visitors
+// wait on); everything else becomes its own chunk so the app pages don't
+// pay for the marketing pages' JS and vice versa.
+const Pricing = lazy(() => import("./pages/Pricing.jsx"));
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Account = lazy(() => import("./pages/Account.jsx"));
+const Sources = lazy(() => import("./pages/Sources.jsx"));
+const Gallery = lazy(() => import("./pages/Gallery.jsx"));
+const BillingSuccess = lazy(() => import("./pages/BillingSuccess.jsx"));
+const BillingCancel = lazy(() => import("./pages/BillingCancel.jsx"));
+const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 
 function Logo() {
   return (
@@ -65,7 +71,14 @@ function Nav() {
             the hamburger below is the only way to reach them on mobile. */}
         <div className="hidden sm:flex items-center gap-4">
           <Link to="/pricing" style={{ ...fM, fontSize: 13, color: T.ink }}>Pricing</Link>
-          {loading ? null : user ? (
+          {loading ? (
+            // Placeholder with the logged-out controls' footprint — without
+            // it the nav CTAs pop in when auth resolves and shift the header.
+            <span className="invisible flex items-center gap-4" aria-hidden="true">
+              <GhostButton to="/login">Sign in</GhostButton>
+              <CTAButton to="/pricing">Get started</CTAButton>
+            </span>
+          ) : user ? (
             <>
               {loggedInLinks}
               <CTAButton to="/account">Account</CTAButton>
@@ -135,16 +148,27 @@ export default function App() {
     <div style={{ background: T.paper, fontFamily: "'Inter', sans-serif", color: T.ink }} className="min-h-screen">
       <style>{FONTS}</style>
       <Nav />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/sources" element={<Sources />} />
-        <Route path="/gallery" element={<Gallery />} />
-        <Route path="/billing/success" element={<BillingSuccess />} />
-        <Route path="/billing/cancel" element={<BillingCancel />} />
-      </Routes>
+      <ErrorBoundary>
+        <Suspense
+          fallback={(
+            <div className="flex items-center justify-center py-24" role="status" aria-label="Loading page">
+              <Spinner />
+            </div>
+          )}
+        >
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/sources" element={<Sources />} />
+            <Route path="/gallery" element={<Gallery />} />
+            <Route path="/billing/success" element={<BillingSuccess />} />
+            <Route path="/billing/cancel" element={<BillingCancel />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
       <Footer />
     </div>
   );

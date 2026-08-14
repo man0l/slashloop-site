@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmtAge } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon, CloseIcon } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, Modal, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon, CloseIcon, Skeleton } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
@@ -34,6 +35,7 @@ function SourceThumb({ src }) {
 
 function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [sourceType, setSourceType] = useState("creator");
   const [query, setQuery] = useState("");
   const [videoLimit, setVideoLimit] = useState(20);
@@ -41,34 +43,40 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
 
   async function submit(e) {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || status === "loading") return;
     setStatus("loading");
+    const label = query.trim();
     try {
       // TikTok only — the connector refuses reels/shorts today (no live
       // scraper for either), so the form never offers them.
-      const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: query.trim(), videoLimit });
+      const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: label, videoLimit });
       setQuery("");
+      setStatus("idle");
 
       // A newly tracked source with no videos yet just reads as broken
       // ("never" in LAST REFRESH) until someone notices and clicks Refresh —
       // this is what the MCP conversational flow already does by default
       // (create_source chained straight into refresh_source, see
       // .claude/skills/track/SKILL.md), the site just wasn't doing it too.
-      try {
-        await refreshSource(accessToken, workspaceId, source.id);
-        showToast(`Now tracking ${query.trim()} — first scrape queued.`, { type: "success" });
-      } catch (refreshErr) {
-        showToast(
-          `Tracking ${query.trim()}, but the first scrape didn't start: `
-          + (refreshErr instanceof SourcesApiError ? refreshErr.message : "couldn't queue refresh.")
-          + " Use Refresh to retry.",
-          { type: "error" },
-        );
-      }
-      onCreated();
+      // Queuing is fast, but it's still a second network hop the form
+      // shouldn't block on — fire it and report via toast.
+      showToast(`Now tracking ${label} — first scrape queued.`, { type: "success" });
+      refreshSource(accessToken, workspaceId, source.id)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["source-issue", workspaceId, source.id] });
+          queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
+        })
+        .catch((refreshErr) => {
+          showToast(
+            `The first scrape for ${label} didn't start: `
+            + (refreshErr instanceof SourcesApiError ? refreshErr.message : "couldn't queue refresh.")
+            + " Use Refresh to retry.",
+            { type: "error" },
+          );
+        });
+      onCreated(source.id);
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't create source.", { type: "error" });
-    } finally {
       setStatus("idle");
     }
   }
@@ -277,7 +285,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
       }
       setTrackedQueries((prev) => new Set(prev).add(s.query));
       showToast(`Now tracking ${s.query} — first scrape queued.`, { type: "success" });
-      onTracked();
+      onTracked(source.id);
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't track this source.", { type: "error" });
     } finally {
@@ -453,55 +461,98 @@ function EditVideoLimitDialog({ open, initialValue, busy, onCancel, onSave }) {
   const valid = Number.isInteger(value) && value >= 1 && value <= 200;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(20,24,29,0.45)" }}
-      onClick={onCancel}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Edit video limit"
-        className="w-full max-w-sm rounded-lg p-5"
-        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>Edit video limit</div>
-        <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
-          Max videos pulled per refresh (1–200). The tracked query can't be changed here — delete and re-track to change that.
-        </p>
-        <input
-          type="number"
-          min={1}
-          max={200}
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(Number(e.target.value))}
-          style={{ ...inputStyle, width: "100%", marginTop: 12 }}
-        />
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md px-3 py-1.5"
-            style={{ ...fB, fontSize: 13, color: T.muted }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => onSave(value)}
-            disabled={busy || !valid}
-            className="rounded-md px-3 py-1.5"
-            style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: busy || !valid ? 0.6 : 1 }}
-          >
-            {busy ? "…" : "Save"}
-          </button>
-        </div>
+    <Modal ariaLabel="Edit video limit" onClose={onCancel}>
+      <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>Edit video limit</div>
+      <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
+        Max videos pulled per refresh (1–200). The tracked query can't be changed here — delete and re-track to change that.
+      </p>
+      <input
+        type="number"
+        min={1}
+        max={200}
+        value={value}
+        onChange={(e) => setValue(Number(e.target.value))}
+        style={{ ...inputStyle, width: "100%", marginTop: 12 }}
+      />
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5"
+          style={{ ...fB, fontSize: 13, color: T.muted }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => onSave(value)}
+          disabled={busy || !valid}
+          className="rounded-md px-3 py-1.5"
+          style={{ ...fB, fontSize: 13, fontWeight: 600, background: T.signal, color: "#fff", opacity: busy || !valid ? 0.6 : 1 }}
+        >
+          {busy ? "…" : "Save"}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
+}
+
+/**
+ * Per-row supplemental data: the thumbnail of the source's biggest outlier
+ * and its most recent refresh issue. Keyed per source id in TanStack Query,
+ * so the desktop row and the mobile card (both always mounted) share one
+ * fetch, and re-mounting the list after an action doesn't refetch rows
+ * whose data is already fresh — the hand-rolled fetchedRowIds set this
+ * replaces.
+ */
+function useSourceRowData(accessToken, workspaceId, sourceId) {
+  const thumbQuery = useQuery({
+    queryKey: ["source-thumb", workspaceId, sourceId],
+    queryFn: async ({ signal }) => {
+      const r = await getGallery(accessToken, { workspaceId, sourceId, sortBy: "outlier_score", limit: 1 }, signal);
+      return r.cards?.[0]?.thumbUrl ?? null;
+    },
+    enabled: Boolean(accessToken && workspaceId && sourceId),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+
+  const issueQuery = useQuery({
+    queryKey: ["source-issue", workspaceId, sourceId],
+    queryFn: async ({ signal }) => {
+      const full = await getSource(accessToken, workspaceId, sourceId, signal);
+      const run = full.refreshRuns?.[0];
+      const job = full.lastRefreshJob;
+
+      // A refusal (insufficient credits, Apify cap breach) never reaches
+      // the point where a RefreshRun row gets written — so a source can
+      // fail every attempt and `refreshRuns` stays empty. If the last
+      // refresh JOB is a failure and it's more recent than the last
+      // refresh RUN (or there is no run at all), that refusal is the real
+      // story, not whatever the last successful run said.
+      if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
+        return { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt };
+      }
+
+      if (!run) return null;
+      // errorsJson is the run's whole log, including bookkeeping the
+      // connector keeps for support ("Refresh policy: mode=incremental
+      // limit=5", "Already known: 1/3 results were existing videos").
+      // Only the failures belong in the UI — see src/lib/refreshLog.js.
+      const errors = parseRefreshFailures(run.errorsJson);
+      return errors.length ? { errors, ranAt: run.ranAt } : null;
+    },
+    enabled: Boolean(accessToken && workspaceId && sourceId),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  return {
+    thumbUrl: thumbQuery.data ?? null,
+    issue: issueQuery.data ?? null,
+    issueUnavailable: issueQuery.isError,
+  };
 }
 
 /**
@@ -509,13 +560,42 @@ function EditVideoLimitDialog({ open, initialValue, busy, onCancel, onSave }) {
  * the mobile card render this the same underlying entity in different DOM
  * shapes (a <tr> can't have a <div> sibling in a <tbody>, so they can't be
  * the same component), but neither should re-derive the actions themselves.
+ *
+ * Each action only disables its own button (busyAction), not its siblings —
+ * pausing one row shouldn't make refreshing it impossible.
  */
-function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
+function useSourceRowActions(source, accessToken, workspaceId) {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete" | "edit"
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingLimit, setEditingLimit] = useState(false);
-  const busy = busyAction !== null;
+
+  function invalidateRow() {
+    queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
+    queryClient.invalidateQueries({ queryKey: ["source-thumb", workspaceId, source.id] });
+    queryClient.invalidateQueries({ queryKey: ["source-issue", workspaceId, source.id] });
+    queryClient.invalidateQueries({ queryKey: ["gallery", workspaceId] });
+  }
+
+  const toggleMutation = useMutation({
+    mutationFn: () => updateSource(accessToken, workspaceId, source.id, { isActive: !source.isActive }),
+    // Optimistic flip: the switch reflects the tap instantly; the server
+    // confirms (or the cache rolls back) a moment later.
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["sources", workspaceId] });
+      const previous = queryClient.getQueryData(["sources", workspaceId]);
+      queryClient.setQueryData(["sources", workspaceId], (list) =>
+        (list ?? []).map((s) => (s.id === source.id ? { ...s, isActive: !s.isActive } : s)),
+      );
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["sources", workspaceId], context.previous);
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update source.", { type: "error" });
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] }),
+  });
 
   async function saveVideoLimit(newLimit) {
     setBusyAction("edit");
@@ -523,7 +603,7 @@ function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
       await updateSource(accessToken, workspaceId, source.id, { videoLimit: newLimit });
       setEditingLimit(false);
       showToast(`Video limit updated to ${newLimit}.`, { type: "success" });
-      onChanged();
+      queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't update video limit.", { type: "error" });
     } finally {
@@ -534,10 +614,9 @@ function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
   async function toggleActive() {
     setBusyAction("toggle");
     try {
-      await updateSource(accessToken, workspaceId, source.id, { isActive: !source.isActive });
-      onChanged();
-    } catch (err) {
-      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update source.", { type: "error" });
+      await toggleMutation.mutateAsync();
+    } catch {
+      // onError already showed the toast.
     } finally {
       setBusyAction(null);
     }
@@ -548,7 +627,7 @@ function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
     try {
       await refreshSource(accessToken, workspaceId, source.id);
       showToast("Refresh queued — new videos will show up shortly.", { type: "success" });
-      onChanged(source.id);
+      invalidateRow();
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.", { type: "error" });
     } finally {
@@ -562,7 +641,9 @@ function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
       await deleteSource(accessToken, workspaceId, source.id);
       setConfirmDelete(false);
       showToast(`Deleted ${source.query}.`, { type: "success" });
-      onChanged();
+      queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
+      queryClient.removeQueries({ queryKey: ["source-thumb", workspaceId, source.id] });
+      queryClient.removeQueries({ queryKey: ["source-issue", workspaceId, source.id] });
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't delete source.", { type: "error" });
     } finally {
@@ -571,38 +652,38 @@ function useSourceRowActions(source, accessToken, workspaceId, onChanged) {
   }
 
   return {
-    busyAction, busy, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
+    busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
     saveVideoLimit, toggleActive, doRefresh, doDelete,
   };
 }
 
 /** The four per-row action icon buttons — identical on desktop and mobile. */
-function SourceRowActions({ source, issue, busyAction, busy, doRefresh, toggleActive, setEditingLimit, setConfirmDelete }) {
+function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, setEditingLimit, setConfirmDelete }) {
   return (
     <div className="flex items-center gap-1">
       <IconButton
         icon={<RefreshIcon />}
         label={busyAction === "refresh" ? "Refreshing…" : issue?.errors?.length > 0 ? "Retry — last refresh had errors" : "Refresh now"}
-        disabled={busy}
+        disabled={busyAction === "refresh"}
         tone={issue?.errors?.length > 0 ? "#B3261E" : T.signal}
         onClick={doRefresh}
       />
       <IconButton
         icon={source.isActive ? <PauseIcon /> : <PlayIcon />}
-        label={source.isActive ? "Pause tracking" : "Resume tracking"}
-        disabled={busy}
+        label={busyAction === "toggle" ? "Updating…" : source.isActive ? "Pause tracking" : "Resume tracking"}
+        disabled={busyAction === "toggle"}
         onClick={toggleActive}
       />
       <IconButton
         icon={<EditIcon />}
         label={`Edit video limit (currently ${source.videoLimit})`}
-        disabled={busy}
+        disabled={busyAction === "edit"}
         onClick={() => setEditingLimit(true)}
       />
       <IconButton
         icon={<TrashIcon />}
-        label="Delete source"
-        disabled={busy}
+        label={busyAction === "delete" ? "Deleting…" : "Delete source"}
+        disabled={busyAction === "delete"}
         danger
         onClick={() => setConfirmDelete(true)}
       />
@@ -610,12 +691,33 @@ function SourceRowActions({ source, issue, busyAction, busy, doRefresh, toggleAc
   );
 }
 
-function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
+function SourceIssueBadge({ issue, issueUnavailable }) {
+  // Unlike a thumbnail, silently dropping the refresh-issue fetch would
+  // render a failing source as perfectly healthy — surface it as a muted
+  // warning instead of the red one.
+  if (issueUnavailable) {
+    return <IconButton icon={<WarningIcon />} label="Couldn't load last refresh status." onClick={() => {}} />;
+  }
+  if (issue?.errors?.length > 0) {
+    return (
+      <IconButton
+        icon={<WarningIcon />}
+        label={`Last refresh (${new Date(issue.ranAt).toLocaleString()}): ${issue.errors.join(" · ")}`}
+        danger
+        onClick={() => {}}
+      />
+    );
+  }
+  return null;
+}
+
+function SourceRow({ source, accessToken, workspaceId }) {
   const navigate = useNavigate();
   const {
-    busyAction, busy, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
+    busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
     saveVideoLimit, toggleActive, doRefresh, doDelete,
-  } = useSourceRowActions(source, accessToken, workspaceId, onChanged);
+  } = useSourceRowActions(source, accessToken, workspaceId);
+  const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
 
   // Row navigates to this source's gallery; clicks on an action button/link
   // inside it must not also trigger that navigation.
@@ -651,19 +753,12 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
       <td className="py-3 pr-4" style={{ ...fM, fontSize: 12, color: source.isActive ? T.teal : T.muted }}>
         <div className="flex items-center gap-1.5">
           <span>{busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}</span>
-          {issue?.errors?.length > 0 && (
-            <IconButton
-              icon={<WarningIcon />}
-              label={`Last refresh (${new Date(issue.ranAt).toLocaleString()}): ${issue.errors.join(" · ")}`}
-              danger
-              onClick={() => {}}
-            />
-          )}
+          <SourceIssueBadge issue={issue} issueUnavailable={issueUnavailable} />
         </div>
       </td>
       <td className="py-3">
         <SourceRowActions
-          source={source} issue={issue} busyAction={busyAction} busy={busy}
+          source={source} issue={issue} busyAction={busyAction}
           doRefresh={doRefresh} toggleActive={toggleActive}
           setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
         />
@@ -694,12 +789,13 @@ function SourceRow({ source, thumbUrl, issue, accessToken, workspaceId, onChange
  * hook), stacked into a card instead of table columns, since a 5-column
  * table with 4 icon actions has nowhere to go on a phone-width screen.
  */
-function SourceCard({ source, thumbUrl, issue, accessToken, workspaceId, onChanged }) {
+function SourceCard({ source, accessToken, workspaceId }) {
   const navigate = useNavigate();
   const {
-    busyAction, busy, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
+    busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
     saveVideoLimit, toggleActive, doRefresh, doDelete,
-  } = useSourceRowActions(source, accessToken, workspaceId, onChanged);
+  } = useSourceRowActions(source, accessToken, workspaceId);
+  const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
 
   function openGallery(e) {
     if (e.target.closest("button, a")) return;
@@ -727,20 +823,13 @@ function SourceCard({ source, thumbUrl, issue, accessToken, workspaceId, onChang
         </span>
         <span className="flex items-center gap-1.5" style={{ color: source.isActive ? T.teal : T.muted }}>
           {busyAction === "toggle" ? "…" : source.isActive ? "active" : "paused"}
-          {issue?.errors?.length > 0 && (
-            <IconButton
-              icon={<WarningIcon />}
-              label={`Last refresh (${new Date(issue.ranAt).toLocaleString()}): ${issue.errors.join(" · ")}`}
-              danger
-              onClick={() => {}}
-            />
-          )}
+          <SourceIssueBadge issue={issue} issueUnavailable={issueUnavailable} />
         </span>
       </div>
 
       <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.line}` }}>
         <SourceRowActions
-          source={source} issue={issue} busyAction={busyAction} busy={busy}
+          source={source} issue={issue} busyAction={busyAction}
           doRefresh={doRefresh} toggleActive={toggleActive}
           setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
         />
@@ -767,92 +856,55 @@ function SourceCard({ source, thumbUrl, issue, accessToken, workspaceId, onChang
   );
 }
 
+function SourceRowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 py-3" style={{ borderTop: `1px solid ${T.line}` }}>
+      <Skeleton style={{ width: 36, height: 48, borderRadius: 6 }} />
+      <div className="flex flex-col gap-2 grow">
+        <Skeleton style={{ height: 14, width: "40%" }} />
+        <Skeleton style={{ height: 11, width: "24%" }} />
+      </div>
+      <Skeleton style={{ height: 11, width: 80 }} />
+    </div>
+  );
+}
+
 export default function Sources() {
   const { user, loading: authLoading, accessToken } = useAuth();
   const { activeWorkspaceId, loading: workspaceLoading } = useWorkspace();
-  const [sources, setSources] = useState(null);
-  const [error, setError] = useState("");
-  // sourceId -> thumbUrl of that source's single biggest outlier, used as its
-  // representative image in the table (fetched separately since /api/sources
-  // doesn't carry per-video data).
-  const [topThumbs, setTopThumbs] = useState({});
-  // sourceId -> { errors: string[], ranAt } from that source's most recent
-  // refresh run, so a scrape failure (bad query, scoring error, timeout) is
-  // visible in the row instead of only in server logs.
-  const [refreshIssues, setRefreshIssues] = useState({});
-  // ids we've already fetched thumb/issue data for — so re-loading the list
-  // after one row's action (refresh, edit, ...) doesn't refetch every other
-  // row's thumb + refresh-issue data too. Only ids new to the list, or an
-  // id explicitly passed to load() as "this row changed", get (re)fetched.
-  const fetchedRowIds = useRef(new Set());
+  const queryClient = useQueryClient();
 
-  const loadRowData = useCallback((ids) => {
-    if (!accessToken || !activeWorkspaceId || ids.length === 0) return;
-    ids.forEach((id) => fetchedRowIds.current.add(id));
+  const sourcesQuery = useQuery({
+    queryKey: ["sources", activeWorkspaceId],
+    queryFn: ({ signal }) => listSources(accessToken, activeWorkspaceId, {}, signal),
+    enabled: Boolean(accessToken && activeWorkspaceId),
+    // Reloading the list after an action keeps the current rows on screen
+    // while it revalidates; switching workspaces swaps to skeletons.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === activeWorkspaceId ? prev : undefined,
+  });
+  const sources = sourcesQuery.data ?? [];
 
-    ids.forEach((id) => {
-      getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: id, sortBy: "outlier_score", limit: 1 })
-        .then((r) => setTopThumbs((prev) => ({ ...prev, [id]: r.cards?.[0]?.thumbUrl ?? null })))
-        .catch(() => {});
+  // A tracked suggestion / new source joins the list; the id just seeds row
+  // data immediately (the queries pick it up by key once the row mounts).
+  function onCreated() {
+    queryClient.invalidateQueries({ queryKey: ["sources", activeWorkspaceId] });
+  }
 
-      getSource(accessToken, activeWorkspaceId, id)
-        .then((full) => {
-          const run = full.refreshRuns?.[0];
-          const job = full.lastRefreshJob;
-
-          // A refusal (insufficient credits, Apify cap breach) never
-          // reaches the point where a RefreshRun row gets written — so a
-          // source can fail every attempt and `refreshRuns` stays empty.
-          // If the last refresh JOB is a failure and it's more recent than
-          // the last refresh RUN (or there is no run at all), that refusal
-          // is the real story, not whatever the last successful run said.
-          if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
-            setRefreshIssues((prev) => ({ ...prev, [id]: { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt } }));
-            return;
-          }
-
-          if (!run) {
-            setRefreshIssues((prev) => ({ ...prev, [id]: null }));
-            return;
-          }
-          // errorsJson is the run's whole log, including bookkeeping the
-          // connector keeps for support ("Refresh policy: mode=incremental
-          // limit=5", "Already known: 1/3 results were existing videos").
-          // Only the failures belong in the UI — see src/lib/refreshLog.js.
-          const errors = parseRefreshFailures(run.errorsJson);
-          setRefreshIssues((prev) => ({ ...prev, [id]: errors.length ? { errors, ranAt: run.ranAt } : null }));
-        })
-        .catch(() => {});
-    });
-  }, [accessToken, activeWorkspaceId]);
-
-  // Pass a sourceId when only that one row changed (refresh, edit, ...) so
-  // its thumb/issue get refetched without touching every other row; omit it
-  // for a full reload (initial load, workspace switch, new source tracked)
-  // — any id not yet fetched picks up row data automatically.
-  const load = useCallback((affectedId) => {
-    if (!accessToken || !activeWorkspaceId) return;
-    listSources(accessToken, activeWorkspaceId)
-      .then((list) => {
-        setSources(list);
-        const ids = affectedId
-          ? [affectedId]
-          : list.map((s) => s.id).filter((id) => !fetchedRowIds.current.has(id));
-        loadRowData(ids);
-      })
-      .catch((err) => setError(err instanceof SourcesApiError ? err.message : "Couldn't load sources."));
-  }, [accessToken, activeWorkspaceId, loadRowData]);
-
-  useEffect(() => {
-    setSources(null);
-    setError("");
-    setTopThumbs({});
-    setRefreshIssues({});
-    fetchedRowIds.current = new Set();
-    load();
-  }, [load]);
-
-  if (authLoading) return null;
+  if (authLoading) {
+    return (
+      <section className="max-w-4xl mx-auto px-5 py-16">
+        <SectionLabel>SOURCES</SectionLabel>
+        <h1 className="mt-3" style={{ ...fD, fontWeight: 900, fontSize: 32, letterSpacing: -0.8 }}>
+          Tracked sources
+        </h1>
+        <div className="mt-6"><Skeleton style={{ height: 38, width: 260 }} /></div>
+        <div className="mt-8 flex flex-col gap-2">
+          {Array.from({ length: 4 }, (_, i) => <SourceRowSkeleton key={i} />)}
+        </div>
+      </section>
+    );
+  }
   if (!user) return <Navigate to="/login?next=/sources" replace />;
 
   return (
@@ -869,7 +921,7 @@ export default function Sources() {
       <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
         <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>TRACK A NEW SOURCE</div>
         {activeWorkspaceId ? (
-          <NewSourceForm accessToken={accessToken} workspaceId={activeWorkspaceId} onCreated={load} />
+          <NewSourceForm accessToken={accessToken} workspaceId={activeWorkspaceId} onCreated={onCreated} />
         ) : (
           <p className="mt-2" style={{ fontSize: 13, color: T.muted }}>
             {workspaceLoading ? "Loading workspaces…" : "Create a workspace above first."}
@@ -878,14 +930,29 @@ export default function Sources() {
       </div>
 
       {activeWorkspaceId && (
-        <SuggestedSourcesPanel accessToken={accessToken} workspaceId={activeWorkspaceId} onTracked={load} />
+        <SuggestedSourcesPanel accessToken={accessToken} workspaceId={activeWorkspaceId} onTracked={onCreated} />
       )}
 
       <div className="mt-8">
-        {error ? (
-          <AlertBanner>{error}</AlertBanner>
-        ) : !activeWorkspaceId ? null : sources === null ? (
-          <p style={{ fontSize: 14, color: T.muted }}>Loading…</p>
+        {sourcesQuery.isError ? (
+          <AlertBanner
+            action={
+              <button
+                type="button"
+                onClick={() => sourcesQuery.refetch()}
+                className="shrink-0 rounded-md px-2 py-1"
+                style={{ ...fB, fontSize: 12, fontWeight: 600, color: "#7A1F17", textDecoration: "underline" }}
+              >
+                Retry
+              </button>
+            }
+          >
+            {sourcesQuery.error?.message || "Couldn't load sources."}
+          </AlertBanner>
+        ) : !activeWorkspaceId ? null : sourcesQuery.isPending ? (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 4 }, (_, i) => <SourceRowSkeleton key={i} />)}
+          </div>
         ) : sources.length === 0 ? (
           <p style={{ fontSize: 14, color: T.muted }}>No sources tracked yet in this workspace.</p>
         ) : (
@@ -909,11 +976,8 @@ export default function Sources() {
                   <SourceRow
                     key={s.id}
                     source={s}
-                    thumbUrl={topThumbs[s.id]}
-                    issue={refreshIssues[s.id]}
                     accessToken={accessToken}
                     workspaceId={activeWorkspaceId}
-                    onChanged={load}
                   />
                 ))}
               </tbody>
@@ -924,11 +988,8 @@ export default function Sources() {
                 <SourceCard
                   key={s.id}
                   source={s}
-                  thumbUrl={topThumbs[s.id]}
-                  issue={refreshIssues[s.id]}
                   accessToken={accessToken}
                   workspaceId={activeWorkspaceId}
-                  onChanged={load}
                 />
               ))}
             </div>

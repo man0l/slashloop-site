@@ -6,10 +6,10 @@ import { apiFetch, ApiError } from "./http.js";
 export const SourcesApiError = ApiError;
 
 /** GET /api/sources?workspaceId=... -> [{ id, platform, sourceType, query, ... }] */
-export function listSources(accessToken, workspaceId, filters = {}) {
+export function listSources(accessToken, workspaceId, filters = {}, signal) {
   const clean = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== null && v !== ""));
   const params = new URLSearchParams({ workspaceId, ...clean });
-  return apiFetch(`/api/sources?${params.toString()}`, { accessToken });
+  return apiFetch(`/api/sources?${params.toString()}`, { accessToken, signal });
 }
 
 /**
@@ -17,9 +17,9 @@ export function listSources(accessToken, workspaceId, filters = {}) {
  * and its 3 newest refreshRuns (itemsPulled, newVideos, errorsJson, costCents,
  * ranAt) — used to surface the last refresh's warnings/errors in the UI.
  */
-export function getSource(accessToken, workspaceId, sourceId) {
+export function getSource(accessToken, workspaceId, sourceId, signal) {
   const params = new URLSearchParams({ id: sourceId, workspaceId });
-  return apiFetch(`/api/sources?${params.toString()}`, { accessToken });
+  return apiFetch(`/api/sources?${params.toString()}`, { accessToken, signal });
 }
 
 /**

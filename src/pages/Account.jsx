@@ -1,25 +1,39 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Navigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM } from "../lib/theme.js";
-import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
+import { SectionLabel, CTAButton, GhostButton, Skeleton } from "../components/ui.jsx";
 import CreditTopUp from "../components/CreditTopUp.jsx";
 import { useAuth } from "../lib/auth.jsx";
-import { getBillingStatus, createPortalSession, BillingApiError } from "../lib/api.js";
+import { getBillingStatus, createPortalSession } from "../lib/api.js";
 
 export default function Account() {
   const { user, loading, accessToken, signOut } = useAuth();
-  const [billing, setBilling] = useState(null);
-  const [billingError, setBillingError] = useState("");
   const [portalStatus, setPortalStatus] = useState("idle");
 
-  useEffect(() => {
-    if (!accessToken) return;
-    getBillingStatus(accessToken)
-      .then(setBilling)
-      .catch((err) => setBillingError(err instanceof BillingApiError ? err.message : "Couldn't load billing status."));
-  }, [accessToken]);
+  const billingQuery = useQuery({
+    queryKey: ["billing", accessToken],
+    queryFn: () => getBillingStatus(accessToken),
+    enabled: Boolean(accessToken),
+    retry: 0,
+  });
+  const billing = billingQuery.data ?? null;
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <section className="max-w-2xl mx-auto px-5 py-16">
+        <SectionLabel>ACCOUNT</SectionLabel>
+        <h1 className="mt-3" style={{ ...fD, fontWeight: 900, fontSize: 32, letterSpacing: -0.8 }}>
+          Account
+        </h1>
+        <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
+          <Skeleton style={{ height: 11, width: 80 }} />
+          <Skeleton className="mt-3" style={{ height: 24, width: 140 }} />
+          <Skeleton className="mt-4" style={{ height: 40, width: "100%" }} />
+        </div>
+      </section>
+    );
+  }
   if (!user) return <Navigate to="/login?next=/account" replace />;
 
   async function openPortal() {
@@ -41,10 +55,22 @@ export default function Account() {
 
       <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
         <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>PLAN</div>
-        {billingError ? (
-          <p className="mt-2" style={{ fontSize: 14, color: T.muted }}>{billingError}</p>
+        {billingQuery.isError ? (
+          <p className="mt-2" style={{ fontSize: 14, color: T.muted }}>
+            {billingQuery.error?.message || "Couldn't load billing status."}{" "}
+            <button
+              type="button"
+              onClick={() => billingQuery.refetch()}
+              style={{ ...fB, fontSize: 13, color: T.signal, textDecoration: "underline" }}
+            >
+              Retry
+            </button>
+          </p>
         ) : !billing ? (
-          <p className="mt-2" style={{ fontSize: 14, color: T.muted }}>Loading…</p>
+          <div className="mt-3 flex flex-col gap-2">
+            <Skeleton style={{ height: 24, width: 140 }} />
+            <Skeleton style={{ height: 40, width: "100%" }} />
+          </div>
         ) : (
           <>
             <div className="mt-1 flex items-baseline gap-2">

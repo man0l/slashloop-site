@@ -4,6 +4,8 @@
 // workspaces.js/sources.js/gallery.js don't each re-implement auth headers
 // and error shaping.
 
+import { supabase, supabaseConfigured } from "./supabase.js";
+
 const MCP_URL = (import.meta.env.VITE_MCP_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
@@ -15,16 +17,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch(path, { method = "GET", accessToken, body } = {}) {
-  if (!MCP_URL) {
-    throw new ApiError("VITE_MCP_URL is not set — see .env.example.", 0);
-  }
-  if (!accessToken) {
-    throw new ApiError("Not signed in.", 401);
-  }
-
+async function request(path, { method = "GET", accessToken, body, signal } = {}) {
   const res = await fetch(`${MCP_URL}${path}`, {
     method,
+    signal,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       ...(body ? { "Content-Type": "application/json" } : {}),
@@ -49,4 +45,35 @@ export async function apiFetch(path, { method = "GET", accessToken, body } = {})
   }
 
   return res.json();
+}
+
+export async function apiFetch(path, { method = "GET", accessToken, body, signal } = {}) {
+  if (!MCP_URL) {
+    throw new ApiError("VITE_MCP_URL is not set — see .env.example.", 0);
+  }
+  if (!accessToken) {
+    throw new ApiError("Not signed in.", 401);
+  }
+
+  try {
+    return await request(path, { method, accessToken, body, signal });
+  } catch (err) {
+    // A Supabase access token expires hourly — a 401 mid-session shouldn't
+    // surface as raw error toasts until the user reloads. Refresh the session
+    // once and replay the request with the new token; if it still fails, the
+    // second 401 propagates like any other error.
+    if (err instanceof ApiError && err.status === 401 && supabaseConfigured && !(signal?.aborted)) {
+      let refreshed = null;
+      try {
+        ({ data: { session: refreshed } } = await supabase.auth.refreshSession());
+      } catch {
+        /* fall through and replay with the token we have */
+      }
+      const token = refreshed?.access_token ?? accessToken;
+      if (token !== accessToken || refreshed) {
+        return request(path, { method, accessToken: token, body, signal });
+      }
+    }
+    throw err;
+  }
 }

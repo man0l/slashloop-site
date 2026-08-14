@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
-import { SectionLabel } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, Skeleton, Spinner } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { listSources } from "../lib/sources.js";
-import { getGallery, GalleryApiError } from "../lib/gallery.js";
+import { getGallery } from "../lib/gallery.js";
 import GalleryCard from "../components/GalleryCard.jsx";
 
 const selectStyle = { ...fB, fontSize: 13, padding: "7px 9px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
@@ -18,11 +19,27 @@ const SORT_OPTIONS = [
   { value: "newest", label: "Newest" },
 ];
 
+function GallerySkeletonGrid() {
+  return (
+    <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="rounded-lg" style={{ border: `1px solid ${T.line}`, background: T.card }}>
+          <Skeleton style={{ aspectRatio: "9/16", width: "100%", borderRadius: "8px 8px 0 0" }} />
+          <div className="flex flex-col gap-2 p-3">
+            <Skeleton style={{ height: 12, width: "60%" }} />
+            <Skeleton style={{ height: 14, width: "90%" }} />
+            <Skeleton style={{ height: 14, width: "40%" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Gallery() {
   const { user, loading: authLoading, accessToken } = useAuth();
   const { activeWorkspaceId } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [sources, setSources] = useState([]);
   // Seeded from ?sourceId= so a Sources-page row can deep-link straight into
   // its own gallery; kept in sync with the URL as the filter changes.
   const [sourceId, setSourceId] = useState(() => searchParams.get("sourceId") || "");
@@ -31,40 +48,64 @@ export default function Gallery() {
   const [minViews, setMinViews] = useState(0);
   const [analyzedBy, setAnalyzedBy] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!accessToken || !activeWorkspaceId) return;
-    listSources(accessToken, activeWorkspaceId).then(setSources).catch(() => {});
-  }, [accessToken, activeWorkspaceId]);
+  // The filter-select options; shared with the Sources page via the
+  // ['sources', workspaceId] cache, so navigating between the two doesn't
+  // refetch it.
+  const sourcesQuery = useQuery({
+    queryKey: ["sources", activeWorkspaceId],
+    queryFn: ({ signal }) => listSources(accessToken, activeWorkspaceId, {}, signal),
+    enabled: Boolean(accessToken && activeWorkspaceId),
+  });
+  const sources = sourcesQuery.data ?? [];
 
-  // Any filter change resets to the first page of results.
-  useEffect(() => {
-    setLimit(PAGE_SIZE);
-  }, [activeWorkspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy]);
+  const filters = { sourceId: sourceId || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined };
+
+  const galleryQuery = useQuery({
+    queryKey: ["gallery", activeWorkspaceId, filters, limit],
+    queryFn: ({ signal }) => getGallery(accessToken, { workspaceId: activeWorkspaceId, ...filters, limit }, signal),
+    enabled: Boolean(accessToken && activeWorkspaceId),
+    // Filter/sort/page changes keep the previous cards on screen (dimmed)
+    // while the new results load; switching workspaces does NOT — showing
+    // workspace A's videos under workspace B's header reads as a bug.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === activeWorkspaceId ? prev : undefined,
+  });
 
   function updateSourceId(id) {
     setSourceId(id);
+    setLimit(PAGE_SIZE);
     setSearchParams(id ? { sourceId: id } : {}, { replace: true });
   }
 
-  const load = useCallback(() => {
-    if (!accessToken || !activeWorkspaceId) return;
-    setError("");
-    getGallery(accessToken, { workspaceId: activeWorkspaceId, sourceId: sourceId || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined, limit })
-      .then(setResult)
-      .catch((err) => setError(err instanceof GalleryApiError ? err.message : "Couldn't load gallery."));
-  }, [accessToken, activeWorkspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy, limit]);
+  function updateFilter(setter) {
+    return (value) => {
+      setter(value);
+      setLimit(PAGE_SIZE);
+    };
+  }
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (authLoading) return null;
+  if (authLoading) {
+    // Keep the shell mounted — a blank page while auth resolves is what made
+    // this page feel blocking. The heading and filters render immediately;
+    // only the data region waits.
+    return (
+      <section className="max-w-6xl mx-auto px-5 py-16">
+        <SectionLabel>GALLERY</SectionLabel>
+        <h1 className="mt-3" style={{ ...fD, fontWeight: 900, fontSize: 32, letterSpacing: -0.8 }}>
+          Outlier gallery
+        </h1>
+        <div className="mt-6"><Skeleton style={{ height: 38, width: 260 }} /></div>
+        <div className="mt-14"><GallerySkeletonGrid /></div>
+      </section>
+    );
+  }
   if (!user) return <Navigate to="/login?next=/gallery" replace />;
 
+  const result = galleryQuery.data;
   const cards = result?.cards ?? [];
+  const busy = galleryQuery.isFetching || sourcesQuery.isFetching;
+  const dimmed = galleryQuery.isPlaceholderData || (galleryQuery.isFetching && cards.length > 0);
 
   return (
     <section className="max-w-6xl mx-auto px-5 py-16">
@@ -87,43 +128,65 @@ export default function Gallery() {
         </label>
         <label className="flex flex-col gap-1">
           <span style={{ ...fM, fontSize: 11, color: T.muted }}>SORT</span>
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
+          <select value={sortBy} onChange={(e) => updateFilter(setSortBy)(e.target.value)} style={selectStyle}>
             {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
           <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN OUTLIER</span>
-          <select value={minOutlier} onChange={(e) => setMinOutlier(Number(e.target.value))} style={selectStyle}>
+          <select value={minOutlier} onChange={(e) => updateFilter(setMinOutlier)(Number(e.target.value))} style={selectStyle}>
             {[0, 2, 5, 10, 25, 50, 100].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${v}×`}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
           <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN VIEWS</span>
-          <select value={minViews} onChange={(e) => setMinViews(Number(e.target.value))} style={selectStyle}>
+          <select value={minViews} onChange={(e) => updateFilter(setMinViews)(Number(e.target.value))} style={selectStyle}>
             {[0, 10000, 100000, 1000000, 10000000].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${fmt(v)}`}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
           <span style={{ ...fM, fontSize: 11, color: T.muted }}>ANALYZED BY</span>
-          <select value={analyzedBy} onChange={(e) => setAnalyzedBy(e.target.value)} style={selectStyle}>
+          <select value={analyzedBy} onChange={(e) => updateFilter(setAnalyzedBy)(e.target.value)} style={selectStyle}>
             <option value="">Any</option>
             <option value="openrouter">OpenRouter</option>
           </select>
         </label>
+        {busy && (
+          <span className="self-center px-1" title="Loading…" aria-label="Loading">
+            <Spinner />
+          </span>
+        )}
       </div>
 
       <div className="mt-8">
-        {error ? (
-          <p style={{ fontSize: 14, color: T.muted }}>{error}</p>
+        {galleryQuery.isError ? (
+          <AlertBanner
+            action={
+              <button
+                type="button"
+                onClick={() => galleryQuery.refetch()}
+                className="shrink-0 rounded-md px-2 py-1"
+                style={{ ...fB, fontSize: 12, fontWeight: 600, color: "#7A1F17", textDecoration: "underline" }}
+              >
+                Retry
+              </button>
+            }
+          >
+            {galleryQuery.error?.message || "Couldn't load gallery."}
+          </AlertBanner>
         ) : !activeWorkspaceId ? (
           <p style={{ fontSize: 14, color: T.muted }}>Create a workspace above first.</p>
-        ) : !result ? (
-          <p style={{ fontSize: 14, color: T.muted }}>Loading…</p>
+        ) : galleryQuery.isPending ? (
+          <GallerySkeletonGrid />
         ) : cards.length === 0 ? (
           <p style={{ fontSize: 14, color: T.muted }}>{result.note || "No videos match these filters."}</p>
         ) : (
           <>
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            <div
+              className={`grid gap-4 transition-opacity duration-150 ${dimmed ? "opacity-60" : "opacity-100"}`}
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+              aria-busy={dimmed}
+            >
               {cards.map((c, i) => (
                 <GalleryCard key={c.id} card={c} index={i + 1} accessToken={accessToken} workspaceId={activeWorkspaceId} />
               ))}
@@ -133,9 +196,10 @@ export default function Gallery() {
                 <button
                   type="button"
                   onClick={() => setLimit((n) => n + PAGE_SIZE)}
-                  style={{ ...fB, fontSize: 13, padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${T.ink}`, color: T.ink }}
+                  disabled={galleryQuery.isFetching}
+                  style={{ ...fB, fontSize: 13, padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${T.ink}`, color: T.ink, opacity: galleryQuery.isFetching ? 0.6 : 1 }}
                 >
-                  Load more
+                  {galleryQuery.isFetching ? "Loading…" : "Load more"}
                 </button>
               </div>
             )}

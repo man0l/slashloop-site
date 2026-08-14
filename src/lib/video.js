@@ -21,9 +21,9 @@ const QUOTA_CODES = new Set(["gemini_quota", "gemini_rate_limit", "gemini_server
  *   analysis: { id, analysisBasis, backend, model, data } | null,
  *   analysisJob: { jobId, status, lastError, errorCode } | null }
  */
-export function getVideoDetail(accessToken, { workspaceId, videoId }) {
+export function getVideoDetail(accessToken, { workspaceId, videoId }, signal) {
   const params = new URLSearchParams({ workspaceId });
-  return apiFetch(`/api/videos/${encodeURIComponent(videoId)}?${params.toString()}`, { accessToken });
+  return apiFetch(`/api/videos/${encodeURIComponent(videoId)}?${params.toString()}`, { accessToken, signal });
 }
 
 /**

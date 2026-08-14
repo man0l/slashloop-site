@@ -6,7 +6,7 @@
 // them — a text-only run leaves those null and the modal just omits them.
 
 import { T, fB, fM, fmtTime } from "../lib/theme.js";
-import { CloseIcon } from "./ui.jsx";
+import { CloseIcon, Modal } from "./ui.jsx";
 
 const sectionLabel = { ...fM, fontSize: 11, letterSpacing: 2, color: T.signal, textTransform: "uppercase" };
 const muted = { color: T.muted, fontSize: 12.5 };
@@ -36,19 +36,12 @@ export default function AnalysisModal({ detail, onClose, onSeek }) {
   const overall = d.overallAssessment;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(20,24,29,0.5)" }}
-      onClick={onClose}
+    <Modal
+      ariaLabel="Video analysis"
+      onClose={onClose}
+      panelStyle={{ padding: 20, maxWidth: "42rem", maxHeight: "85vh" }}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Video analysis"
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-lg p-5"
-        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="flex max-h-[85vh] w-full flex-col">
         <div className="flex items-start justify-between">
           <div style={{ ...fB, fontSize: 16, fontWeight: 700, color: T.ink }}>Analysis</div>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-md p-1 transition-colors hover:bg-black/5">
@@ -226,6 +219,6 @@ export default function AnalysisModal({ detail, onClose, onSeek }) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

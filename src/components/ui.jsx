@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { T, fB, fM } from "../lib/theme.js";
 
@@ -158,6 +159,91 @@ export function AlertBanner({ children, action, className = "" }) {
 }
 
 /**
+ * A neutral pulsing placeholder shown while a page's data loads — the shell
+ * (heading, filters, layout) stays mounted so the page doesn't flash blank
+ * between "signed out" and "content ready".
+ */
+export function Skeleton({ style, className = "" }) {
+  return (
+    <div
+      className={`animate-pulse rounded ${className}`}
+      style={{ background: "#E7E8E3", ...style }}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
+ * The one true popup chrome — a centered panel over a dimmed, click-to-close
+ * backdrop with Escape handling, a Tab focus trap, and focus returned to the
+ * element that opened it. Dialogs (confirm, edit, analysis) render their
+ * content inside this instead of re-implementing the chrome.
+ */
+export function Modal({ ariaLabel, onClose, panelStyle, panelClassName = "", children }) {
+  const panelRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    const panel = panelRef.current;
+
+    function focusables() {
+      if (!panel) return [];
+      return [...panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')];
+    }
+
+    focusables()[0]?.focus();
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(20,24,29,0.45)" }}
+      onClick={onClose}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        className={`w-full max-w-sm rounded-lg p-5 ${panelClassName}`}
+        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.25)", ...panelStyle }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
  * An actual popup — a centered modal over a dimmed backdrop — for
  * confirming a destructive action. Replaces swapping a row's buttons out
  * for "confirm/cancel" in place, which is easy to miss and doesn't read as
@@ -166,42 +252,29 @@ export function AlertBanner({ children, action, className = "" }) {
 export function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", danger, busy, onConfirm, onCancel }) {
   if (!open) return null;
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(20,24,29,0.45)" }}
-      onClick={onCancel}
-    >
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={title}
-        className="w-full max-w-sm rounded-lg p-5"
-        style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {title && <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</div>}
-        {message && <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>{message}</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md px-3 py-1.5"
-            style={{ ...fB, fontSize: 13, color: T.muted }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            className="rounded-md px-3 py-1.5"
-            style={{ ...fB, fontSize: 13, fontWeight: 600, background: danger ? "#B3261E" : T.signal, color: "#fff", opacity: busy ? 0.6 : 1 }}
-          >
-            {busy ? "…" : confirmLabel}
-          </button>
-        </div>
+    <Modal ariaLabel={title} onClose={onCancel}>
+      {title && <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</div>}
+      {message && <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>{message}</p>}
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5"
+          style={{ ...fB, fontSize: 13, color: T.muted }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5"
+          style={{ ...fB, fontSize: 13, fontWeight: 600, background: danger ? "#B3261E" : T.signal, color: "#fff", opacity: busy ? 0.6 : 1 }}
+        >
+          {busy ? "…" : confirmLabel}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

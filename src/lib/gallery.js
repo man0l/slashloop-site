@@ -14,12 +14,12 @@ export const GalleryApiError = ApiError;
  * analyzedBy restricts to videos whose most recent analysis ran on that backend
  * (see the connector's buildCards), ordered most-recently-analyzed first.
  */
-export function getGallery(accessToken, opts) {
+export function getGallery(accessToken, opts, signal) {
   const { workspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy, limit } = opts;
   const raw = { workspaceId, sourceId, sortBy, minOutlier, minViews, analyzedBy, limit };
   const clean = Object.fromEntries(
     Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && v !== ""),
   );
   const params = new URLSearchParams(clean);
-  return apiFetch(`/api/gallery-data?${params.toString()}`, { accessToken });
+  return apiFetch(`/api/gallery-data?${params.toString()}`, { accessToken, signal });
 }

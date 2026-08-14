@@ -10,8 +10,10 @@ export const T = {
   line: "#E2E4DF",
 };
 
+// Font faces load via <link> tags in index.html (preconnect + stylesheet) —
+// a CSS @import here is serial and late-discovered, delaying text render.
+// This block only carries the keyframes and motion preference.
 export const FONTS = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @keyframes blink { 0%,49% {opacity:1} 50%,100% {opacity:0} }
 @keyframes rowIn { from {opacity:0; transform:translateY(6px)} to {opacity:1; transform:none} }
 @media (prefers-reduced-motion: reduce) {

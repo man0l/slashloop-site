@@ -7,8 +7,8 @@ import { apiFetch, ApiError } from "./http.js";
 export const WorkspacesApiError = ApiError;
 
 /** GET /api/workspaces -> [{ id, name, planKey, createdAt }] */
-export function listWorkspaces(accessToken) {
-  return apiFetch("/api/workspaces", { accessToken });
+export function listWorkspaces(accessToken, signal) {
+  return apiFetch("/api/workspaces", { accessToken, signal });
 }
 
 /** POST /api/workspaces { name } -> { id, name, planKey, createdAt } */
