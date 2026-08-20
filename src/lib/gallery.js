@@ -23,3 +23,23 @@ export function getGallery(accessToken, opts, signal) {
   const params = new URLSearchParams(clean);
   return apiFetch(`/api/gallery-data?${params.toString()}`, { accessToken, signal });
 }
+
+/**
+ * GET /api/gallery-data?workspaceId=&creatorHandle= -> creator hover preview
+ * { handle, trackedSourceId, videoCount, outlierCount, followers, medianViews,
+ *   outliers, recent }.
+ *
+ * Uses videos already in the workspace — no live scrape. An older connector
+ * that ignores creatorHandle still returns `{ cards }`; callers should check
+ * isCreatorPreview() and fall back to previewFromGalleryCards().
+ */
+export function getCreatorPreview(accessToken, { workspaceId, creatorHandle }, signal) {
+  const handle = String(creatorHandle || "").replace(/^@+/, "").trim().toLowerCase();
+  const params = new URLSearchParams({ workspaceId, creatorHandle: handle });
+  return apiFetch(`/api/gallery-data?${params.toString()}`, { accessToken, signal });
+}
+
+/** True when the gallery-data response is a creator hover preview, not a card grid. */
+export function isCreatorPreview(data) {
+  return Boolean(data && Array.isArray(data.outliers) && Array.isArray(data.recent) && !Array.isArray(data.cards));
+}

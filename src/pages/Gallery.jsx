@@ -188,7 +188,15 @@ export default function Gallery() {
               aria-busy={dimmed}
             >
               {cards.map((c, i) => (
-                <GalleryCard key={c.id} card={c} index={i + 1} accessToken={accessToken} workspaceId={activeWorkspaceId} />
+                <GalleryCard
+                  key={c.id}
+                  card={c}
+                  index={i + 1}
+                  accessToken={accessToken}
+                  workspaceId={activeWorkspaceId}
+                  sources={sources}
+                  galleryCards={cards}
+                />
               ))}
             </div>
             {cards.length >= limit && (

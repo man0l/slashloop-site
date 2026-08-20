@@ -17,6 +17,7 @@ import { T, fB, fM, fmt, fmtAge, fmtTime } from "../lib/theme.js";
 import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner } from "./ui.jsx";
 import useVideoAnalysis from "../lib/useVideoAnalysis.js";
 import AnalysisModal from "./AnalysisModal.jsx";
+import CreatorChip from "./CreatorChip.jsx";
 
 const thumbStyle = { width: "100%", aspectRatio: "9/16", background: "#E7E8E3" };
 
@@ -86,7 +87,7 @@ function Thumb({ src }) {
   );
 }
 
-export default function GalleryCard({ card, index, accessToken, workspaceId }) {
+export default function GalleryCard({ card, index, accessToken, workspaceId, sources, galleryCards }) {
   const { phase, detail, error, busy, hydrate, analyze, retry } = useVideoAnalysis({
     accessToken,
     workspaceId,
@@ -123,7 +124,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
 
   return (
     <article
-      className="group relative flex flex-col rounded-lg transition-transform duration-200 ease-out will-change-transform hover:-translate-y-1.5 hover:shadow-xl"
+      className="group relative flex flex-col rounded-lg transition-transform duration-200 ease-out will-change-transform hover:-translate-y-1.5 hover:shadow-xl has-[[data-creator-preview=open]]:z-20"
       style={{ border: `1px solid ${T.line}`, background: T.card }}
       onMouseEnter={hydrate}
       onFocus={hydrate}
@@ -186,7 +187,13 @@ export default function GalleryCard({ card, index, accessToken, workspaceId }) {
 
       <div className="flex grow flex-col gap-2 p-3">
         <div className="flex flex-wrap items-center gap-2" style={{ ...fM, fontSize: 12, color: T.muted }}>
-          <strong className="truncate" style={{ color: T.ink, maxWidth: "100%" }}>@{card.creatorHandle}</strong>
+          <CreatorChip
+            handle={card.creatorHandle}
+            accessToken={accessToken}
+            workspaceId={workspaceId}
+            sources={sources}
+            galleryCards={galleryCards}
+          />
           <span className="whitespace-nowrap">{fmt(card.views)} views</span>
           {card.postedAt != null && (
             <span className="whitespace-nowrap" title={new Date(card.postedAt).toLocaleString()}>

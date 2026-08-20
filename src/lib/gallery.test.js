@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getGallery, GalleryApiError } from "./gallery.js";
+import { getGallery, getCreatorPreview, isCreatorPreview, GalleryApiError } from "./gallery.js";
 
 const TOKEN = "tok-123";
 
@@ -53,5 +53,27 @@ describe("getGallery", () => {
     const err = await getGallery(TOKEN, { workspaceId: "ws-1" }).catch((e) => e);
     expect(err).toBeInstanceOf(GalleryApiError);
     expect(err.message).toBe("nope");
+  });
+});
+
+describe("getCreatorPreview", () => {
+  it("GETs /api/gallery-data with workspaceId and a stripped creatorHandle", async () => {
+    const fetchMock = vi.fn(async () => json(200, { handle: "maker", outliers: [], recent: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getCreatorPreview(TOKEN, { workspaceId: "ws-1", creatorHandle: "@Maker" });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://mcp.test/api/gallery-data?workspaceId=ws-1&creatorHandle=maker");
+    expect(init.method).toBe("GET");
+    expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+});
+
+describe("isCreatorPreview", () => {
+  it("accepts the hover-card shape and rejects a card-grid response", () => {
+    expect(isCreatorPreview({ handle: "maker", outliers: [], recent: [] })).toBe(true);
+    expect(isCreatorPreview({ cards: [], note: "ok", filters: {} })).toBe(false);
+    expect(isCreatorPreview(null)).toBe(false);
   });
 });

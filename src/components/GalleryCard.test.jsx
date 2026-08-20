@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { VideoApiError } from "../lib/video.js";
 import GalleryCard from "./GalleryCard.jsx";
 
@@ -13,6 +15,15 @@ const { getVideoDetail, analyzeVideo } = vi.hoisted(() => ({
 vi.mock("../lib/video.js", async () => {
   const actual = await vi.importActual("../lib/video.js");
   return { ...actual, getVideoDetail, analyzeVideo };
+});
+
+vi.mock("../lib/toast.jsx", () => ({
+  useToast: () => ({ showToast: vi.fn() }),
+}));
+
+vi.mock("../lib/gallery.js", async () => {
+  const actual = await vi.importActual("../lib/gallery.js");
+  return { ...actual, getCreatorPreview: vi.fn(async () => ({ cards: [] })) };
 });
 
 beforeEach(() => {
@@ -70,14 +81,23 @@ const detailFor = (over = {}) => ({
 });
 
 const unexploredDetail = detailFor({ analysis: null });
-const renderCard = () =>
-  render(<GalleryCard card={card} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+
+function renderCard(ui) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        {ui ?? <GalleryCard card={card} index={1} accessToken="tok-1" workspaceId="ws-1" />}
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
 
 describe("GalleryCard — analyze flow", () => {
   it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
     getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
 
-    render(<GalleryCard card={{ ...card, mediaUrl: "https://media/1.mp4" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    renderCard(<GalleryCard card={{ ...card, mediaUrl: "https://media/1.mp4" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
 
     // Video renders immediately on load — no hover/analyze needed.
     const video = document.querySelector("video");
@@ -90,7 +110,7 @@ describe("GalleryCard — analyze flow", () => {
   it("scrape failure: shows a warning icon + tooltip and a note when the card carries a fetchError and has no media", async () => {
     getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null });
 
-    render(
+    renderCard(
       <GalleryCard
         card={{
           ...card,
@@ -121,7 +141,7 @@ describe("GalleryCard — analyze flow", () => {
       slideshowImages: ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"],
     });
 
-    render(
+    renderCard(
       <GalleryCard
         card={{
           ...card,
