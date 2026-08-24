@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
@@ -38,7 +38,7 @@ function GallerySkeletonGrid() {
 
 export default function Gallery() {
   const { user, loading: authLoading, accessToken } = useAuth();
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, setActiveWorkspaceId } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   // Seeded from ?sourceId= so a Sources-page row can deep-link straight into
   // its own gallery; kept in sync with the URL as the filter changes.
@@ -59,7 +59,7 @@ export default function Gallery() {
   });
   const sources = sourcesQuery.data ?? [];
 
-  const filters = { sourceId: sourceId || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined };
+  const filters = { sourceId: sourceId || undefined, videoId: videoFilter || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined };
 
   const galleryQuery = useQuery({
     queryKey: ["gallery", activeWorkspaceId, filters, limit],
@@ -72,25 +72,44 @@ export default function Gallery() {
       prevQuery?.queryKey[1] === activeWorkspaceId ? prev : undefined,
   });
 
-  // ?video=<id> — deep link from the weekly digest email: scroll to that
-  // card and ring it. One-shot: the param is stripped after the first
-  // successful scroll so a manual refresh doesn't jump again.
-  const focusVideoId = searchParams.get("video") || "";
-  const [highlightedVideoId, setHighlightedVideoId] = useState(focusVideoId);
+  // ?video=<id> — deep link from the digest email: filter the gallery down
+  // to exactly that video (not highlight-in-crowd; the email talked about
+  // one outlier, the landing view shows one outlier). Kept in the URL like
+  // sourceId so a refresh or share preserves it; "Show all" clears it.
+  const [videoFilter, setVideoFilter] = useState(() => searchParams.get("video") || "");
+
+  // ?workspace=<id> — the digest link is self-contained: switch to the
+  // owning workspace before the filtered view loads. One-shot; ownership is
+  // still enforced server-side by /api/gallery-data (requireOwnedWorkspace).
+  const appliedWorkspaceLink = useRef(false);
   useEffect(() => {
-    if (!focusVideoId || !galleryQuery.isSuccess) return;
-    const el = document.getElementById(`gallery-card-${focusVideoId}`);
-    if (!el) return; // past the first page — plain gallery is fine
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (appliedWorkspaceLink.current) return;
+    const ws = searchParams.get("workspace");
+    if (!ws) return;
+    appliedWorkspaceLink.current = true;
+    if (ws !== activeWorkspaceId) setActiveWorkspaceId(ws);
     const next = new URLSearchParams(searchParams);
-    next.delete("video");
+    next.delete("workspace");
     setSearchParams(next, { replace: true });
-  }, [focusVideoId, galleryQuery.isSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, activeWorkspaceId, setActiveWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function syncUrl({ sourceId: sid, video }) {
+    const params = {};
+    if (sid) params.sourceId = sid;
+    if (video) params.video = video;
+    setSearchParams(params, { replace: true });
+  }
+
+  function updateVideoFilter(id) {
+    setVideoFilter(id);
+    setLimit(PAGE_SIZE);
+    syncUrl({ sourceId, video: id });
+  }
 
   function updateSourceId(id) {
     setSourceId(id);
     setLimit(PAGE_SIZE);
-    setSearchParams(id ? { sourceId: id } : {}, { replace: true });
+    syncUrl({ sourceId: id, video: videoFilter });
   }
 
   function updateFilter(setter) {
@@ -173,6 +192,22 @@ export default function Gallery() {
         )}
       </div>
 
+      {videoFilter && (
+        <div className="mt-4 flex items-center gap-3" data-testid="video-filter-chip">
+          <span style={{ ...fM, fontSize: 12, color: T.muted }}>
+            Showing the video from your digest email
+          </span>
+          <button
+            type="button"
+            onClick={() => updateVideoFilter("")}
+            className="rounded-md px-2 py-1"
+            style={{ ...fB, fontSize: 12, fontWeight: 600, color: "#FF4D00", textDecoration: "underline" }}
+          >
+            Show all videos
+          </button>
+        </div>
+      )}
+
       <div className="mt-8">
         {galleryQuery.isError ? (
           <AlertBanner
@@ -211,7 +246,6 @@ export default function Gallery() {
                   workspaceId={activeWorkspaceId}
                   sources={sources}
                   galleryCards={cards}
-                  highlighted={highlightedVideoId === c.id}
                 />
               ))}
             </div>
