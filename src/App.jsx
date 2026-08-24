@@ -12,6 +12,7 @@ import Home from "./pages/Home.jsx";
 const Pricing = lazy(() => import("./pages/Pricing.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Account = lazy(() => import("./pages/Account.jsx"));
+const EmailSettings = lazy(() => import("./pages/EmailSettings.jsx"));
 const Sources = lazy(() => import("./pages/Sources.jsx"));
 const Discover = lazy(() => import("./pages/Discover.jsx"));
 const Gallery = lazy(() => import("./pages/Gallery.jsx"));
@@ -163,6 +164,7 @@ export default function App() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/settings/email" element={<EmailSettings />} />
             <Route path="/discover" element={<Discover />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/gallery" element={<Gallery />} />

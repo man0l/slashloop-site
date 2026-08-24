@@ -66,3 +66,23 @@ export function createPortalSession(accessToken) {
 export function getBillingStatus(accessToken) {
   return billingFetch("/api/billing/status", { accessToken });
 }
+
+// --- Weekly digest settings (api/digest-settings.ts on the MCP server) ---
+
+/**
+ * GET /api/digest-settings ->
+ *   { workspaces: [{ id, name, digestEnabled, digestEmail, lastDigestAt }] }
+ */
+export function getDigestSettings(accessToken) {
+  return billingFetch("/api/digest-settings", { accessToken });
+}
+
+/**
+ * POST /api/digest-settings — update one workspace (workspaceId given) or
+ * every workspace the caller owns. Body: { workspaceId?, digestEnabled?,
+ * digestEmail? }. digestEmail null clears the override and delivers to the
+ * account email instead.
+ */
+export function updateDigestSettings(accessToken, body) {
+  return billingFetch("/api/digest-settings", { method: "POST", accessToken, body });
+}

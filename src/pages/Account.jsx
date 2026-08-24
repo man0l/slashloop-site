@@ -101,6 +101,7 @@ export default function Account() {
 
         <div className="mt-6 flex flex-wrap gap-3">
           <GhostButton to="/pricing">Change plan</GhostButton>
+          <GhostButton to="/settings/email">Email settings</GhostButton>
           <CTAButton onClick={openPortal} disabled={portalStatus === "loading"}>
             {portalStatus === "loading" ? "Opening…" : "Manage billing"}
           </CTAButton>
