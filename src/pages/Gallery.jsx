@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
-import { SectionLabel, AlertBanner, Skeleton, Spinner } from "../components/ui.jsx";
+import { SectionLabel, AlertBanner, Skeleton, Spinner, CloseIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
@@ -151,61 +151,65 @@ export default function Gallery() {
         <WorkspaceSwitcher />
       </div>
 
-      <div className="mt-6 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">
-          <span style={{ ...fM, fontSize: 11, color: T.muted }}>SOURCE</span>
-          <select value={sourceId} onChange={(e) => updateSourceId(e.target.value)} style={selectStyle}>
-            <option value="">All sources</option>
-            {sources.map((s) => <option key={s.id} value={s.id}>{s.query}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span style={{ ...fM, fontSize: 11, color: T.muted }}>SORT</span>
-          <select value={sortBy} onChange={(e) => updateFilter(setSortBy)(e.target.value)} style={selectStyle}>
-            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN OUTLIER</span>
-          <select value={minOutlier} onChange={(e) => updateFilter(setMinOutlier)(Number(e.target.value))} style={selectStyle}>
-            {[0, 2, 5, 10, 25, 50, 100].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${v}×`}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN VIEWS</span>
-          <select value={minViews} onChange={(e) => updateFilter(setMinViews)(Number(e.target.value))} style={selectStyle}>
-            {[0, 10000, 100000, 1000000, 10000000].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${fmt(v)}`}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span style={{ ...fM, fontSize: 11, color: T.muted }}>ANALYZED BY</span>
-          <select value={analyzedBy} onChange={(e) => updateFilter(setAnalyzedBy)(e.target.value)} style={selectStyle}>
-            <option value="">Any</option>
-            <option value="openrouter">OpenRouter</option>
-          </select>
-        </label>
-        {busy && (
-          <span className="self-center px-1" title="Loading…" aria-label="Loading">
-            <Spinner />
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span style={{ ...fM, fontSize: 11, color: T.muted }}>SOURCE</span>
+            <select value={sourceId} onChange={(e) => updateSourceId(e.target.value)} style={selectStyle}>
+              <option value="">All sources</option>
+              {sources.map((s) => <option key={s.id} value={s.id}>{s.query}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ ...fM, fontSize: 11, color: T.muted }}>SORT</span>
+            <select value={sortBy} onChange={(e) => updateFilter(setSortBy)(e.target.value)} style={selectStyle}>
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN OUTLIER</span>
+            <select value={minOutlier} onChange={(e) => updateFilter(setMinOutlier)(Number(e.target.value))} style={selectStyle}>
+              {[0, 2, 5, 10, 25, 50, 100].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${v}×`}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ ...fM, fontSize: 11, color: T.muted }}>MIN VIEWS</span>
+            <select value={minViews} onChange={(e) => updateFilter(setMinViews)(Number(e.target.value))} style={selectStyle}>
+              {[0, 10000, 100000, 1000000, 10000000].map((v) => <option key={v} value={v}>{v === 0 ? "Any" : `≥ ${fmt(v)}`}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ ...fM, fontSize: 11, color: T.muted }}>ANALYZED BY</span>
+            <select value={analyzedBy} onChange={(e) => updateFilter(setAnalyzedBy)(e.target.value)} style={selectStyle}>
+              <option value="">Any</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </label>
+          {busy && (
+            <span className="self-center px-1" title="Loading…" aria-label="Loading">
+              <Spinner />
+            </span>
+          )}
+        </div>
+        {videoFilter && (
+          <span
+            className="inline-flex items-center gap-1 self-end rounded-full pl-2.5 pr-1 py-1"
+            style={{ ...fM, fontSize: 12, fontWeight: 600, color: T.signal, background: "#FFF0E8", border: `1px solid ${T.signal}` }}
+            data-testid="video-filter-chip"
+          >
+            From newsletter
+            <button
+              type="button"
+              aria-label="Clear video filter"
+              onClick={() => updateVideoFilter("")}
+              className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5"
+              style={{ color: T.signal }}
+            >
+              <CloseIcon />
+            </button>
           </span>
         )}
       </div>
-
-      {videoFilter && (
-        <div className="mt-4 flex items-center gap-3" data-testid="video-filter-chip">
-          <span style={{ ...fM, fontSize: 12, color: T.muted }}>
-            Showing the video from your digest email
-          </span>
-          <button
-            type="button"
-            onClick={() => updateVideoFilter("")}
-            className="rounded-md px-2 py-1"
-            style={{ ...fB, fontSize: 12, fontWeight: 600, color: "#FF4D00", textDecoration: "underline" }}
-          >
-            Show all videos
-          </button>
-        </div>
-      )}
 
       <div className="mt-8">
         {galleryQuery.isError ? (
