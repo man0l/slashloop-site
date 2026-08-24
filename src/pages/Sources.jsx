@@ -42,6 +42,7 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   const [query, setQuery] = useState("");
   const [videoLimit, setVideoLimit] = useState(20);
   const [isSelf, setIsSelf] = useState(false);
+  const [isCompetitor, setIsCompetitor] = useState(false);
   const [status, setStatus] = useState("idle"); // idle | loading
 
   async function submit(e) {
@@ -58,9 +59,11 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
         query: label,
         videoLimit,
         isSelf: sourceType === "creator" && isSelf,
+        isCompetitor: sourceType === "creator" && isCompetitor && !isSelf,
       });
       setQuery("");
       setIsSelf(false);
+      setIsCompetitor(false);
       setStatus("idle");
 
       // A newly tracked source with no videos yet just reads as broken
@@ -105,7 +108,10 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
           onChange={(e) => {
             const next = e.target.value;
             setSourceType(next);
-            if (next !== "creator") setIsSelf(false);
+            if (next !== "creator") {
+              setIsSelf(false);
+              setIsCompetitor(false);
+            }
           }}
           style={inputStyle}
         >
@@ -142,6 +148,17 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
             onChange={(e) => setIsSelf(e.target.checked)}
           />
           This is my account
+        </label>
+      )}
+      {sourceType === "creator" && (
+        <label className="flex items-center gap-2 pb-2" style={{ ...fB, fontSize: 12, color: T.ink }}>
+          <input
+            type="checkbox"
+            checked={isCompetitor && !isSelf}
+            disabled={isSelf}
+            onChange={(e) => setIsCompetitor(e.target.checked)}
+          />
+          Competitor
         </label>
       )}
       <button
@@ -659,9 +676,26 @@ function useSourceRowActions(source, accessToken, workspaceId) {
     if (source.sourceType !== "creator") return;
     setBusyAction("self");
     try {
-      await updateSource(accessToken, workspaceId, source.id, { isSelf: !source.isSelf });
+      await updateSource(accessToken, workspaceId, source.id, { isSelf: !source.isSelf, isCompetitor: false });
       showToast(
         source.isSelf ? "No longer marked as your account." : `Marked ${source.query} as your account.`,
+        { type: "success" },
+      );
+      invalidateRow();
+    } catch (err) {
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update source.", { type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function toggleCompetitor() {
+    if (source.sourceType !== "creator" || source.isSelf) return;
+    setBusyAction("rival");
+    try {
+      await updateSource(accessToken, workspaceId, source.id, { isCompetitor: !source.isCompetitor });
+      showToast(
+        source.isCompetitor ? "Removed from watchlist." : `Marked ${source.query} as a competitor.`,
         { type: "success" },
       );
       invalidateRow();
@@ -703,12 +737,12 @@ function useSourceRowActions(source, accessToken, workspaceId) {
 
   return {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
-    saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
+    saveVideoLimit, toggleActive, toggleSelf, toggleCompetitor, doRefresh, doDelete,
   };
 }
 
 /** The four per-row action icon buttons — identical on desktop and mobile. */
-function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, toggleSelf, setEditingLimit, setConfirmDelete }) {
+function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, toggleSelf, toggleCompetitor, setEditingLimit, setConfirmDelete }) {
   return (
     <div className="flex items-center gap-1">
       <IconButton
@@ -740,6 +774,24 @@ function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, 
           title={source.isSelf ? "This is your account — click to unmark" : "Mark as your account"}
         >
           {source.isSelf ? "You" : "Me"}
+        </button>
+      )}
+      {source.sourceType === "creator" && !source.isSelf && (
+        <button
+          type="button"
+          onClick={toggleCompetitor}
+          disabled={busyAction === "rival"}
+          className="rounded px-1.5 py-0.5"
+          style={{
+            ...fM, fontSize: 11, fontWeight: 700,
+            color: source.isCompetitor ? T.signal : T.muted,
+            background: source.isCompetitor ? "#FFF0E8" : "transparent",
+            border: `1px solid ${source.isCompetitor ? T.signal : T.line}`,
+            opacity: busyAction === "rival" ? 0.6 : 1,
+          }}
+          title={source.isCompetitor ? "On the competitor watchlist — click to unmark" : "Mark as competitor"}
+        >
+          Rival
         </button>
       )}
       <IconButton
@@ -783,7 +835,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
   const navigate = useNavigate();
   const {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
-    saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
+    saveVideoLimit, toggleActive, toggleSelf, toggleCompetitor, doRefresh, doDelete,
   } = useSourceRowActions(source, accessToken, workspaceId);
   const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
 
@@ -810,6 +862,9 @@ function SourceRow({ source, accessToken, workspaceId }) {
               {source.isSelf && (
                 <span className="rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>You</span>
               )}
+              {source.isCompetitor && !source.isSelf && (
+                <span className="rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.signal, background: "#FFF0E8" }}>Rival</span>
+              )}
             </div>
             <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
           </div>
@@ -832,7 +887,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
       <td className="py-3">
         <SourceRowActions
           source={source} issue={issue} busyAction={busyAction}
-          doRefresh={doRefresh} toggleActive={toggleActive} toggleSelf={toggleSelf}
+          doRefresh={doRefresh} toggleActive={toggleActive} toggleSelf={toggleSelf} toggleCompetitor={toggleCompetitor}
           setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
         />
       </td>
@@ -866,7 +921,7 @@ function SourceCard({ source, accessToken, workspaceId }) {
   const navigate = useNavigate();
   const {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
-    saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
+    saveVideoLimit, toggleActive, toggleSelf, toggleCompetitor, doRefresh, doDelete,
   } = useSourceRowActions(source, accessToken, workspaceId);
   const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
 
@@ -889,6 +944,9 @@ function SourceCard({ source, accessToken, workspaceId }) {
             {source.isSelf && (
               <span className="shrink-0 rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>You</span>
             )}
+            {source.isCompetitor && !source.isSelf && (
+              <span className="shrink-0 rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.signal, background: "#FFF0E8" }}>Rival</span>
+            )}
           </div>
           <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
         </div>
@@ -908,7 +966,7 @@ function SourceCard({ source, accessToken, workspaceId }) {
       <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.line}` }}>
         <SourceRowActions
           source={source} issue={issue} busyAction={busyAction}
-          doRefresh={doRefresh} toggleActive={toggleActive} toggleSelf={toggleSelf}
+          doRefresh={doRefresh} toggleActive={toggleActive} toggleSelf={toggleSelf} toggleCompetitor={toggleCompetitor}
           setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
         />
       </div>

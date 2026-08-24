@@ -98,7 +98,28 @@ function aggregate(mines) {
     })
     .sort((a, b) => b.medianViews - a.medianViews || b.videoCount - a.videoCount);
 
-  return { hashtags, creators, totalSampled };
+  const soundMap = new Map();
+  for (const mine of verified) {
+    for (const sound of mine.sounds ?? []) {
+      const acc = soundMap.get(sound.query) ?? { title: sound.title, author: sound.author, videoCount: 0, totalViews: 0 };
+      acc.videoCount += sound.videoCount;
+      acc.totalViews += sound.videoCount * sound.avgViews;
+      if (sound.title && !acc.title) acc.title = sound.title;
+      soundMap.set(sound.query, acc);
+    }
+  }
+  const sounds = [...soundMap.entries()]
+    .map(([query, acc]) => ({
+      sourceType: "keyword",
+      query: acc.title || query,
+      videoCount: acc.videoCount,
+      avgViews: Math.round(acc.totalViews / acc.videoCount),
+      sampleCaption: acc.author ? `sound · ${acc.author}` : "sound",
+      isSound: true,
+    }))
+    .sort((a, b) => b.videoCount - a.videoCount || b.avgViews - a.avgViews);
+
+  return { hashtags, creators, sounds, totalSampled };
 }
 
 function evidenceFor(s, totalSampled) {
@@ -107,6 +128,9 @@ function evidenceFor(s, totalSampled) {
   // branch and print "Seen in undefined of N videos".
   if (s.sampleCount !== undefined) {
     return `Probed directly · ${s.sampleCount} videos found, top ${fmt(s.topViews)} views`;
+  }
+  if (s.isSound) {
+    return `Heard in ${s.videoCount} of ${totalSampled} sampled videos · avg ${fmt(s.avgViews)} views`;
   }
   if (s.sourceType === "hashtag") {
     return `Seen in ${s.videoCount} of ${totalSampled} sampled videos · avg ${fmt(s.avgViews)} views`;
@@ -304,7 +328,7 @@ export default function Discover() {
   }
 
   const mines = useMemo(() => Object.values(results), [results]);
-  const { hashtags, creators, totalSampled } = useMemo(() => aggregate(mines), [mines]);
+  const { hashtags, creators, sounds, totalSampled } = useMemo(() => aggregate(mines), [mines]);
 
   // Dismissed cards vanish; tracked ones stay put showing "Tracked" — seeing
   // what you just acted on beats it silently disappearing.
@@ -317,8 +341,9 @@ export default function Discover() {
   const seedSuggestions = visible(liveSeeds);
   const hashtagSuggestions = visible(hashtags);
   const creatorSuggestions = visible(creators);
+  const soundSuggestions = visible(sounds);
   const probingCount = seeds.length - mines.length;
-  const anySuggestions = seedSuggestions.length + hashtagSuggestions.length + creatorSuggestions.length > 0;
+  const anySuggestions = seedSuggestions.length + hashtagSuggestions.length + creatorSuggestions.length + soundSuggestions.length > 0;
 
   if (authLoading) {
     return (
@@ -431,6 +456,24 @@ export default function Discover() {
                 {hashtagSuggestions.map((s) => (
                   <SuggestionCard
                     key={normalize(s.sourceType, s.query)}
+                    suggestion={s}
+                    totalSampled={totalSampled}
+                    tracked={trackedKeys.has(normalize(s.sourceType, s.query))}
+                    tracking={trackingKey === normalize(s.sourceType, s.query)}
+                    onTrack={trackSuggestion}
+                    onDismiss={dismissSuggestion}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {soundSuggestions.length > 0 && (
+            <div>
+              <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>SOUNDS MINED FROM SAMPLES</div>
+              <div className="mt-3 grid gap-3">
+                {soundSuggestions.map((s) => (
+                  <SuggestionCard
+                    key={`sound:${s.query}`}
                     suggestion={s}
                     totalSampled={totalSampled}
                     tracked={trackedKeys.has(normalize(s.sourceType, s.query))}
