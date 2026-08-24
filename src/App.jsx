@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { T, fD, fM, FONTS } from "./lib/theme.js";
 import { CTAButton, GhostButton, Spinner } from "./components/ui.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { useAuth } from "./lib/auth.jsx";
+import { trackPageview } from "./lib/analytics.js";
 import Home from "./pages/Home.jsx";
 
 // The landing page ships in the entry chunk (it's what first-time visitors
@@ -149,6 +150,8 @@ function Footer() {
 }
 
 export default function App() {
+  useRoutePageviews();
+
   return (
     <div style={{ background: T.paper, fontFamily: "'Inter', sans-serif", color: T.ink }} className="min-h-screen">
       <style>{FONTS}</style>
@@ -180,4 +183,24 @@ export default function App() {
       <Footer />
     </div>
   );
+}
+
+// GA4 only sees the initial load (the config snippet in index.html); every
+// client-side route change after that has to be reported here.
+function useRoutePageviews() {
+  const { pathname, search } = useLocation();
+  const last = useRef(null);
+
+  useEffect(() => {
+    const path = `${pathname}${search}`;
+    if (last.current === null) {
+      // First render: index.html's gtag config already sent this pageview.
+      last.current = path;
+      return;
+    }
+    if (last.current !== path) {
+      last.current = path;
+      trackPageview(path);
+    }
+  }, [pathname, search]);
 }
