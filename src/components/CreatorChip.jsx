@@ -9,6 +9,7 @@ import { useToast } from "../lib/toast.jsx";
 import { createSource, refreshSource, SourcesApiError } from "../lib/sources.js";
 import { getCreatorPreview, isCreatorPreview } from "../lib/gallery.js";
 import { normalizeCreatorHandle, previewFromGalleryCards, trackedCreatorSource } from "../lib/creator.js";
+import { displayMediaUrl } from "../lib/mediaUrl.js";
 
 const OPEN_DELAY_MS = 180;
 const CLOSE_DELAY_MS = 160;
@@ -16,12 +17,13 @@ const CLOSE_DELAY_MS = 160;
 function PreviewThumb({ video }) {
   const [failed, setFailed] = useState(false);
   const box = { width: 36, height: 48, borderRadius: 4, background: "#E7E8E3", flexShrink: 0 };
+  const src = displayMediaUrl(video.thumbUrl);
 
-  const inner = !video.thumbUrl || failed ? (
+  const inner = !src || failed ? (
     <div style={box} />
   ) : (
     <img
-      src={video.thumbUrl}
+      src={src}
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}

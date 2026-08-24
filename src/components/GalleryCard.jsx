@@ -16,6 +16,7 @@ import { useRef, useState } from "react";
 import { T, fB, fM, fmt, fmtAge, fmtTime } from "../lib/theme.js";
 import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner } from "./ui.jsx";
 import useVideoAnalysis from "../lib/useVideoAnalysis.js";
+import { displayMediaUrl, displayMediaUrls } from "../lib/mediaUrl.js";
 import AnalysisModal from "./AnalysisModal.jsx";
 import CreatorChip from "./CreatorChip.jsx";
 
@@ -102,10 +103,9 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   const failed = phase === "failed";
 
   const analysis = detail?.analysis?.data;
-  const mediaUrl = detail?.mediaUrl ?? card.mediaUrl;
-  const slideshowImages = (detail?.slideshowImages ?? card.slideshowImages ?? []).filter(
-    (u) => typeof u === "string" && u.startsWith("http"),
-  );
+  const mediaUrl = displayMediaUrl(detail?.mediaUrl ?? card.mediaUrl);
+  const slideshowImages = displayMediaUrls(detail?.slideshowImages ?? card.slideshowImages);
+  const thumbUrl = displayMediaUrl(card.thumbUrl);
   const keyMoments = Array.isArray(analysis?.keyMoments) ? analysis.keyMoments : [];
 
   // Why this video couldn't be scraped (Apify etc.) — the connector attaches a
@@ -161,7 +161,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
         ) : slideshowImages.length > 0 ? (
           <Slideshow images={slideshowImages} />
         ) : (
-          <Thumb src={card.thumbUrl} />
+          <Thumb src={thumbUrl} />
         )}
 
         {ready && (

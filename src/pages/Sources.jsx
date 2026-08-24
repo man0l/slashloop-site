@@ -10,6 +10,7 @@ import { useToast } from "../lib/toast.jsx";
 import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, verifySuggestedSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
 import { getGallery } from "../lib/gallery.js";
 import { parseRefreshFailures } from "../lib/refreshLog.js";
+import { displayMediaUrl } from "../lib/mediaUrl.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
 const SOURCE_TYPES = ["creator", "keyword", "hashtag"];
@@ -17,14 +18,15 @@ const SOURCE_TYPES = ["creator", "keyword", "hashtag"];
 function SourceThumb({ src }) {
   const [failed, setFailed] = useState(false);
   const boxStyle = { width: 36, height: 48, borderRadius: 6, background: "#E7E8E3", flexShrink: 0 };
+  const url = displayMediaUrl(src);
 
-  if (!src || failed) {
+  if (!url || failed) {
     return <div style={boxStyle} />;
   }
 
   return (
     <img
-      src={src}
+      src={url}
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}

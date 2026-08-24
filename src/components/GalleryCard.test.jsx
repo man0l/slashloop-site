@@ -134,6 +134,31 @@ describe("GalleryCard — analyze flow", () => {
     expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
   });
 
+  it("slideshow: ignores TikTok CDN slides and uses the stored thumb instead", async () => {
+    getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null, slideshowImages: [] });
+
+    renderCard(
+      <GalleryCard
+        card={{
+          ...card,
+          mediaUrl: null,
+          thumbUrl: "https://pub-abc.r2.dev/ws/vid.jpg",
+          slideshowImages: [
+            "https://p19-common-sign.tiktokcdn-us.com/tos-useast8-p-0068-tx2/x~tplv-tiktokx-origin.image",
+          ],
+        }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+
+    expect(document.querySelector("video")).toBeNull();
+    const img = document.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img.getAttribute("src")).toBe("https://pub-abc.r2.dev/ws/vid.jpg");
+  });
+
   it("slideshow: renders the photo carousel instead of a video or scrape error", async () => {
     getVideoDetail.mockResolvedValue({
       ...unexploredDetail,
