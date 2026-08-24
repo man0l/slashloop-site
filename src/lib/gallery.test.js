@@ -46,6 +46,19 @@ describe("getGallery", () => {
     expect(url).toBe("https://mcp.test/api/gallery-data?workspaceId=ws-1&limit=24");
   });
 
+  it("sends hasHookTest as 1 when set and omits it otherwise", async () => {
+    const fetchMock = vi.fn(async () => json(200, { cards: [], filters: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getGallery(TOKEN, { workspaceId: "ws-1", hasHookTest: true });
+    let [url] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://mcp.test/api/gallery-data?workspaceId=ws-1&hasHookTest=1");
+
+    await getGallery(TOKEN, { workspaceId: "ws-1" });
+    [url] = fetchMock.mock.calls[1];
+    expect(url).toBe("https://mcp.test/api/gallery-data?workspaceId=ws-1");
+  });
+
   it("shapes a non-2xx response through GalleryApiError", async () => {
     const fetchMock = vi.fn(async () => json(400, { error: "bad_request", message: "nope" }));
     vi.stubGlobal("fetch", fetchMock);

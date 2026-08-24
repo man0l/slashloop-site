@@ -106,6 +106,29 @@ describe("GalleryCard — analyze flow", () => {
     expect(screen.queryByText("You")).not.toBeInTheDocument();
   });
 
+  it("shows a hook-test badge with picked count when the card carries an open test", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard(
+      <GalleryCard card={{ ...card, hookTest: { id: "ht-1", status: "picking", pickedCount: 2 } }} index={1} accessToken="tok-1" workspaceId="ws-1" />,
+    );
+    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 2 picked");
+    expect(screen.getByTestId("hook-test-badge")).toHaveAccessibleDescription(/picking/i);
+  });
+
+  it("shows the bare hook-test badge when nothing is picked yet", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard(
+      <GalleryCard card={{ ...card, hookTest: { id: "ht-1", status: "picking", pickedCount: 0 } }} index={1} accessToken="tok-1" workspaceId="ws-1" />,
+    );
+    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 hook test");
+  });
+
+  it("no hook-test badge without an open test", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard();
+    expect(screen.queryByTestId("hook-test-badge")).not.toBeInTheDocument();
+  });
+
   it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
     getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
 

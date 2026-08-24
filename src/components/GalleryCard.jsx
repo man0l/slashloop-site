@@ -205,6 +205,16 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
               You
             </span>
           )}
+          {card.hookTest && (
+            <span
+              className="whitespace-nowrap rounded px-1.5 py-0.5"
+              style={{ fontWeight: 600, color: "#7C5CFF", background: "#F2EEFF" }}
+              title={`Open AI hook test (${card.hookTest.status})${card.hookTest.pickedCount > 0 ? ` — ${card.hookTest.pickedCount} opening${card.hookTest.pickedCount === 1 ? "" : "s"} picked` : ""}`}
+              data-testid="hook-test-badge"
+            >
+              🧪{card.hookTest.pickedCount > 0 ? ` ${card.hookTest.pickedCount} picked` : " hook test"}
+            </span>
+          )}
           <span className="whitespace-nowrap">{fmt(card.views)} views</span>
           {card.postedAt != null && (
             <span className="whitespace-nowrap" title={new Date(card.postedAt).toLocaleString()}>

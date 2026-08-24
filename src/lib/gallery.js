@@ -9,17 +9,23 @@ export const GalleryApiError = ApiError;
 /**
  * GET /api/gallery-data -> { cards, note, filters }
  * opts: { workspaceId, sourceId?, videoId?, sortBy?: "outlier_score"|"views"|"newest",
- *         minOutlier?, minViews?, analyzedBy?: "openrouter", limit? }
+ *         minOutlier?, minViews?, analyzedBy?: "openrouter", hasHookTest?, limit? }
  *
  * videoId restricts the grid to exactly one video — the digest email deep
  * link (?video=) filters the gallery down to the outlier it talked about.
  *
  * analyzedBy restricts to videos whose most recent analysis ran on that backend
  * (see the connector's buildCards), ordered most-recently-analyzed first.
+ *
+ * hasHookTest restricts to videos with an open AI hook test (the 🧪 cards).
  */
 export function getGallery(accessToken, opts, signal) {
-  const { workspaceId, sourceId, videoId, sortBy, minOutlier, minViews, analyzedBy, limit } = opts;
-  const raw = { workspaceId, sourceId, videoId, sortBy, minOutlier, minViews, analyzedBy, limit };
+  const { workspaceId, sourceId, videoId, sortBy, minOutlier, minViews, analyzedBy, hasHookTest, limit } = opts;
+  const raw = {
+    workspaceId, sourceId, videoId, sortBy, minOutlier, minViews, analyzedBy,
+    ...(hasHookTest ? { hasHookTest: "1" } : {}),
+    limit,
+  };
   const clean = Object.fromEntries(
     Object.entries(raw).filter(([, v]) => v !== undefined && v !== null && v !== ""),
   );
