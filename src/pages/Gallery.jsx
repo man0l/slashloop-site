@@ -43,6 +43,11 @@ export default function Gallery() {
   // Seeded from ?sourceId= so a Sources-page row can deep-link straight into
   // its own gallery; kept in sync with the URL as the filter changes.
   const [sourceId, setSourceId] = useState(() => searchParams.get("sourceId") || "");
+  // ?video=<id> — deep link from the digest email: filter the gallery down
+  // to exactly that video (not highlight-in-crowd; the email talked about
+  // one outlier, the landing view shows one outlier). Kept in the URL like
+  // sourceId so a refresh or share preserves it; "Show all" clears it.
+  const [videoFilter, setVideoFilter] = useState(() => searchParams.get("video") || "");
   const [sortBy, setSortBy] = useState("outlier_score");
   const [minOutlier, setMinOutlier] = useState(0);
   const [minViews, setMinViews] = useState(0);
@@ -71,12 +76,6 @@ export default function Gallery() {
     placeholderData: (prev, prevQuery) =>
       prevQuery?.queryKey[1] === activeWorkspaceId ? prev : undefined,
   });
-
-  // ?video=<id> — deep link from the digest email: filter the gallery down
-  // to exactly that video (not highlight-in-crowd; the email talked about
-  // one outlier, the landing view shows one outlier). Kept in the URL like
-  // sourceId so a refresh or share preserves it; "Show all" clears it.
-  const [videoFilter, setVideoFilter] = useState(() => searchParams.get("video") || "");
 
   // ?workspace=<id> — the digest link is self-contained: switch to the
   // owning workspace before the filtered view loads. One-shot; ownership is
