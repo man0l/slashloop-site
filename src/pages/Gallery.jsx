@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
@@ -71,6 +71,21 @@ export default function Gallery() {
     placeholderData: (prev, prevQuery) =>
       prevQuery?.queryKey[1] === activeWorkspaceId ? prev : undefined,
   });
+
+  // ?video=<id> — deep link from the weekly digest email: scroll to that
+  // card and ring it. One-shot: the param is stripped after the first
+  // successful scroll so a manual refresh doesn't jump again.
+  const focusVideoId = searchParams.get("video") || "";
+  const [highlightedVideoId, setHighlightedVideoId] = useState(focusVideoId);
+  useEffect(() => {
+    if (!focusVideoId || !galleryQuery.isSuccess) return;
+    const el = document.getElementById(`gallery-card-${focusVideoId}`);
+    if (!el) return; // past the first page — plain gallery is fine
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const next = new URLSearchParams(searchParams);
+    next.delete("video");
+    setSearchParams(next, { replace: true });
+  }, [focusVideoId, galleryQuery.isSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateSourceId(id) {
     setSourceId(id);
@@ -196,6 +211,7 @@ export default function Gallery() {
                   workspaceId={activeWorkspaceId}
                   sources={sources}
                   galleryCards={cards}
+                  highlighted={highlightedVideoId === c.id}
                 />
               ))}
             </div>

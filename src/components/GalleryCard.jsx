@@ -87,7 +87,7 @@ function Thumb({ src }) {
   );
 }
 
-export default function GalleryCard({ card, index, accessToken, workspaceId, sources, galleryCards }) {
+export default function GalleryCard({ card, index, accessToken, workspaceId, sources, galleryCards, highlighted }) {
   const { phase, detail, error, busy, hydrate, analyze, retry } = useVideoAnalysis({
     accessToken,
     workspaceId,
@@ -124,8 +124,14 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
 
   return (
     <article
+      id={`gallery-card-${card.id}`}
+      data-highlighted={highlighted || undefined}
       className="group relative flex flex-col rounded-lg transition-transform duration-200 ease-out will-change-transform hover:-translate-y-1.5 hover:shadow-xl has-[[data-creator-preview=open]]:z-20"
-      style={{ border: `1px solid ${T.line}`, background: T.card }}
+      style={{
+        border: `1px solid ${highlighted ? T.signal : T.line}`,
+        boxShadow: highlighted ? "0 0 0 2px #FF4D00" : undefined,
+        background: T.card,
+      }}
       onMouseEnter={hydrate}
       onFocus={hydrate}
     >

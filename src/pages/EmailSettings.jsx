@@ -6,26 +6,20 @@ import { useAuth } from "../lib/auth.jsx";
 import { getDigestSettings, updateDigestSettings } from "../lib/api.js";
 
 /**
- * /settings/email — where weekly digest emails go and whether they arrive.
- * Linked from the digest email footer; edits apply per workspace, delivery
- * is one combined email per owner every Monday.
+ * /settings/email — turn the weekly digest on or off per workspace.
+ * Delivery is one combined email per owner every Monday to the account
+ * email; there is deliberately nothing else to configure here.
  */
 export default function EmailSettings() {
   const { user, loading, accessToken } = useAuth();
   const [workspaces, setWorkspaces] = useState(null);
   const [error, setError] = useState("");
-  // Draft recipient per workspace id — empty string means "account email".
-  const [emails, setEmails] = useState({});
-  const [savedIds, setSavedIds] = useState(new Set());
   const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     if (!accessToken) return;
     getDigestSettings(accessToken)
-      .then((data) => {
-        setWorkspaces(data.workspaces ?? []);
-        setEmails(Object.fromEntries((data.workspaces ?? []).map((w) => [w.id, w.digestEmail ?? ""])));
-      })
+      .then((data) => setWorkspaces(data.workspaces ?? []))
       .catch(() => setError("Couldn't load your email settings. Try again shortly."));
   }, [accessToken]);
 
@@ -48,31 +42,6 @@ export default function EmailSettings() {
     }
   }
 
-  async function saveEmail(w) {
-    setBusyId(w.id);
-    setError("");
-    try {
-      const value = (emails[w.id] ?? "").trim();
-      const data = await updateDigestSettings(accessToken, {
-        workspaceId: w.id,
-        digestEmail: value === "" ? null : value,
-      });
-      setWorkspaces(data.workspaces);
-      setSavedIds((prev) => new Set(prev).add(w.id));
-      setTimeout(() => setSavedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(w.id);
-        return next;
-      }), 2500);
-    } catch (err) {
-      setError(err?.message?.includes("valid address")
-        ? "That doesn't look like an email address."
-        : "Couldn't save that. Try again shortly.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   return (
     <section className="max-w-2xl mx-auto px-5 py-16">
       <SectionLabel>EMAIL SETTINGS</SectionLabel>
@@ -80,8 +49,8 @@ export default function EmailSettings() {
         Weekly digest
       </h1>
       <p className="mt-2" style={{ ...fB, fontSize: 15, color: T.muted }}>
-        One email every Monday: the videos that beat their creator's usual numbers,
-        from the sources you track. Turn it off or send it somewhere else below.
+        One email every Monday to your account email: the videos taking off in the
+        niches you track. Pause a workspace below to leave it out.
       </p>
 
       {error && (
@@ -99,62 +68,27 @@ export default function EmailSettings() {
       ) : (
         <div className="mt-6 flex flex-col gap-4">
           {workspaces.map((w) => (
-            <div key={w.id} className="rounded-xl p-5" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div style={{ ...fD, fontWeight: 800, fontSize: 17 }}>{w.name}</div>
-                  <div style={{ ...fM, fontSize: 12, color: T.muted }}>
-                    {w.digestEnabled
-                      ? w.digestEmail
-                        ? `Sent to ${w.digestEmail}`
-                        : `Sent to your account email`
-                      : "Paused"}
-                  </div>
-                </div>
-                <button
-                  onClick={() => toggle(w)}
-                  disabled={busyId === w.id}
-                  aria-label={w.digestEnabled ? "Pause the weekly digest" : "Resume the weekly digest"}
-                  className="relative shrink-0 rounded-full transition-colors"
-                  style={{
-                    width: 46, height: 26,
-                    background: w.digestEnabled ? "#111111" : "#D4D4D4",
-                    opacity: busyId === w.id ? 0.6 : 1,
-                  }}
-                >
-                  <span
-                    className="absolute top-0.5 rounded-full bg-white shadow"
-                    style={{ width: 22, height: 22, left: w.digestEnabled ? 22 : 2 }}
-                  />
-                </button>
+            <div key={w.id} className="flex items-center justify-between gap-3 rounded-xl p-5" style={{ background: T.card, border: `1px solid ${T.line}` }}>
+              <div>
+                <div style={{ ...fD, fontWeight: 800, fontSize: 17 }}>{w.name}</div>
+                <div style={{ ...fM, fontSize: 12, color: T.muted }}>{w.digestEnabled ? "On" : "Off"}</div>
               </div>
-
-              {w.digestEnabled && (
-                <div className="mt-4">
-                  <label htmlFor={`email-${w.id}`} style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>
-                    SEND TO
-                  </label>
-                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                    <input
-                      id={`email-${w.id}`}
-                      type="email"
-                      value={emails[w.id] ?? ""}
-                      onChange={(e) => setEmails((prev) => ({ ...prev, [w.id]: e.target.value }))}
-                      placeholder={`${user.email} (account email)`}
-                      className="flex-1 rounded-lg px-3 py-2.5 outline-none"
-                      style={{ ...fB, fontSize: 14, background: "#fff", border: `1px solid ${T.line}`, color: T.ink }}
-                    />
-                    <button
-                      onClick={() => saveEmail(w)}
-                      disabled={busyId === w.id}
-                      className="rounded-lg px-4 py-2.5"
-                      style={{ ...fB, fontSize: 13, fontWeight: 700, background: "#111", color: "#fff", opacity: busyId === w.id ? 0.6 : 1 }}
-                    >
-                      {savedIds.has(w.id) ? "Saved ✓" : "Save"}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <button
+                onClick={() => toggle(w)}
+                disabled={busyId === w.id}
+                aria-label={w.digestEnabled ? `Turn off the digest for ${w.name}` : `Turn on the digest for ${w.name}`}
+                className="relative shrink-0 rounded-full transition-colors"
+                style={{
+                  width: 46, height: 26,
+                  background: w.digestEnabled ? "#111111" : "#D4D4D4",
+                  opacity: busyId === w.id ? 0.6 : 1,
+                }}
+              >
+                <span
+                  className="absolute top-0.5 rounded-full bg-white shadow"
+                  style={{ width: 22, height: 22, left: w.digestEnabled ? 22 : 2 }}
+                />
+              </button>
             </div>
           ))}
         </div>
