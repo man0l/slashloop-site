@@ -144,7 +144,7 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
           This is my account
         </label>
       )}
-      <button>
+      <button
         type="submit"
         disabled={status === "loading"}
         style={{ ...fB, fontSize: 13, padding: "8px 16px", borderRadius: 8, background: T.signal, color: "#fff" }}
