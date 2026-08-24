@@ -16,6 +16,11 @@ export function trackedCreatorSource(sources, handle) {
   ) ?? null;
 }
 
+/** The workspace's own TikTok, if one creator source is flagged isSelf. */
+export function selfCreatorSource(sources) {
+  return (sources ?? []).find((s) => s.isSelf && s.sourceType === "creator") ?? null;
+}
+
 function cardToPreviewVideo(c) {
   return {
     id: c.id,

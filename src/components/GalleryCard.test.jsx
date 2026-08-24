@@ -94,6 +94,18 @@ function renderCard(ui) {
 }
 
 describe("GalleryCard — analyze flow", () => {
+  it("own-account posts show a You badge", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard(<GalleryCard card={{ ...card, isSelf: true }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    expect(screen.getByText("You")).toBeInTheDocument();
+  });
+
+  it("does not show a You badge on other creators", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard();
+    expect(screen.queryByText("You")).not.toBeInTheDocument();
+  });
+
   it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
     getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
 

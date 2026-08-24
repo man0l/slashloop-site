@@ -157,7 +157,9 @@ export default function Gallery() {
             <span style={{ ...fM, fontSize: 11, color: T.muted }}>SOURCE</span>
             <select value={sourceId} onChange={(e) => updateSourceId(e.target.value)} style={selectStyle}>
               <option value="">All sources</option>
-              {sources.map((s) => <option key={s.id} value={s.id}>{s.query}</option>)}
+              {[...sources].sort((a, b) => Number(Boolean(b.isSelf)) - Number(Boolean(a.isSelf))).map((s) => (
+                <option key={s.id} value={s.id}>{s.isSelf ? `${s.query} · you` : s.query}</option>
+              ))}
             </select>
           </label>
           <label className="flex flex-col gap-1">

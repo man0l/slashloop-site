@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeCreatorHandle,
   previewFromGalleryCards,
+  selfCreatorSource,
   trackedCreatorSource,
 } from "./creator.js";
 
@@ -25,6 +26,17 @@ describe("trackedCreatorSource", () => {
 
   it("does not treat a keyword with the same query as a tracked creator", () => {
     expect(trackedCreatorSource([{ id: "s-kw", sourceType: "keyword", query: "maker" }], "maker")).toBeNull();
+  });
+});
+
+describe("selfCreatorSource", () => {
+  it("returns the creator flagged isSelf", () => {
+    const sources = [
+      { id: "s-other", sourceType: "creator", query: "rival", isSelf: false },
+      { id: "s-me", sourceType: "creator", query: "@me", isSelf: true },
+      { id: "s-tag", sourceType: "hashtag", query: "me", isSelf: true },
+    ];
+    expect(selfCreatorSource(sources)?.id).toBe("s-me");
   });
 });
 

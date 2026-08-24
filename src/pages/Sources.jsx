@@ -41,6 +41,7 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
   const [sourceType, setSourceType] = useState("creator");
   const [query, setQuery] = useState("");
   const [videoLimit, setVideoLimit] = useState(20);
+  const [isSelf, setIsSelf] = useState(false);
   const [status, setStatus] = useState("idle"); // idle | loading
 
   async function submit(e) {
@@ -51,8 +52,15 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
     try {
       // TikTok only — the connector refuses reels/shorts today (no live
       // scraper for either), so the form never offers them.
-      const source = await createSource(accessToken, workspaceId, { platform: "tiktok", sourceType, query: label, videoLimit });
+      const source = await createSource(accessToken, workspaceId, {
+        platform: "tiktok",
+        sourceType,
+        query: label,
+        videoLimit,
+        isSelf: sourceType === "creator" && isSelf,
+      });
       setQuery("");
+      setIsSelf(false);
       setStatus("idle");
 
       // A newly tracked source with no videos yet just reads as broken
@@ -62,7 +70,12 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
       // .claude/skills/track/SKILL.md), the site just wasn't doing it too.
       // Queuing is fast, but it's still a second network hop the form
       // shouldn't block on — fire it and report via toast.
-      showToast(`Now tracking ${label} — first scrape queued.`, { type: "success" });
+      showToast(
+        sourceType === "creator" && isSelf
+          ? `Tracking your account ${label} — first scrape queued.`
+          : `Now tracking ${label} — first scrape queued.`,
+        { type: "success" },
+      );
       refreshSource(accessToken, workspaceId, source.id)
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ["source-issue", workspaceId, source.id] });
@@ -87,7 +100,15 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
     <form onSubmit={submit} className="flex flex-wrap items-end gap-3 mt-4">
       <label className="flex flex-col gap-1">
         <span style={{ ...fM, fontSize: 11, color: T.muted }}>TYPE</span>
-        <select value={sourceType} onChange={(e) => setSourceType(e.target.value)} style={inputStyle}>
+        <select
+          value={sourceType}
+          onChange={(e) => {
+            const next = e.target.value;
+            setSourceType(next);
+            if (next !== "creator") setIsSelf(false);
+          }}
+          style={inputStyle}
+        >
           {SOURCE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </label>
@@ -113,7 +134,17 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
           style={{ ...inputStyle, width: 90 }}
         />
       </label>
-      <button
+      {sourceType === "creator" && (
+        <label className="flex items-center gap-2 pb-2" style={{ ...fB, fontSize: 12, color: T.ink }}>
+          <input
+            type="checkbox"
+            checked={isSelf}
+            onChange={(e) => setIsSelf(e.target.checked)}
+          />
+          This is my account
+        </label>
+      )}
+      <button>
         type="submit"
         disabled={status === "loading"}
         style={{ ...fB, fontSize: 13, padding: "8px 16px", borderRadius: 8, background: T.signal, color: "#fff" }}
@@ -569,7 +600,7 @@ function useSourceRowData(accessToken, workspaceId, sourceId) {
 function useSourceRowActions(source, accessToken, workspaceId) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete" | "edit"
+  const [busyAction, setBusyAction] = useState(null); // null | "refresh" | "toggle" | "delete" | "edit" | "self"
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingLimit, setEditingLimit] = useState(false);
 
@@ -624,6 +655,23 @@ function useSourceRowActions(source, accessToken, workspaceId) {
     }
   }
 
+  async function toggleSelf() {
+    if (source.sourceType !== "creator") return;
+    setBusyAction("self");
+    try {
+      await updateSource(accessToken, workspaceId, source.id, { isSelf: !source.isSelf });
+      showToast(
+        source.isSelf ? "No longer marked as your account." : `Marked ${source.query} as your account.`,
+        { type: "success" },
+      );
+      invalidateRow();
+    } catch (err) {
+      showToast(err instanceof SourcesApiError ? err.message : "Couldn't update source.", { type: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function doRefresh() {
     setBusyAction("refresh");
     try {
@@ -655,12 +703,12 @@ function useSourceRowActions(source, accessToken, workspaceId) {
 
   return {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
-    saveVideoLimit, toggleActive, doRefresh, doDelete,
+    saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
   };
 }
 
 /** The four per-row action icon buttons — identical on desktop and mobile. */
-function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, setEditingLimit, setConfirmDelete }) {
+function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, toggleSelf, setEditingLimit, setConfirmDelete }) {
   return (
     <div className="flex items-center gap-1">
       <IconButton
@@ -676,6 +724,24 @@ function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, 
         disabled={busyAction === "toggle"}
         onClick={toggleActive}
       />
+      {source.sourceType === "creator" && (
+        <button
+          type="button"
+          onClick={toggleSelf}
+          disabled={busyAction === "self"}
+          className="rounded px-1.5 py-0.5"
+          style={{
+            ...fM, fontSize: 11, fontWeight: 700,
+            color: source.isSelf ? T.teal : T.muted,
+            background: source.isSelf ? "#EAF6F4" : "transparent",
+            border: `1px solid ${source.isSelf ? T.teal : T.line}`,
+            opacity: busyAction === "self" ? 0.6 : 1,
+          }}
+          title={source.isSelf ? "This is your account — click to unmark" : "Mark as your account"}
+        >
+          {source.isSelf ? "You" : "Me"}
+        </button>
+      )}
       <IconButton
         icon={<EditIcon />}
         label={`Edit video limit (currently ${source.videoLimit})`}
@@ -717,7 +783,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
   const navigate = useNavigate();
   const {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
-    saveVideoLimit, toggleActive, doRefresh, doDelete,
+    saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
   } = useSourceRowActions(source, accessToken, workspaceId);
   const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
 
@@ -739,7 +805,12 @@ function SourceRow({ source, accessToken, workspaceId }) {
         <div className="flex items-center gap-3">
           <SourceThumb src={thumbUrl} />
           <div>
-            <div style={{ ...fB, fontSize: 14 }}>{source.query}</div>
+            <div className="flex items-center gap-2">
+              <span style={{ ...fB, fontSize: 14 }}>{source.query}</span>
+              {source.isSelf && (
+                <span className="rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>You</span>
+              )}
+            </div>
             <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
           </div>
         </div>
@@ -761,7 +832,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
       <td className="py-3">
         <SourceRowActions
           source={source} issue={issue} busyAction={busyAction}
-          doRefresh={doRefresh} toggleActive={toggleActive}
+          doRefresh={doRefresh} toggleActive={toggleActive} toggleSelf={toggleSelf}
           setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
         />
       </td>
@@ -795,7 +866,7 @@ function SourceCard({ source, accessToken, workspaceId }) {
   const navigate = useNavigate();
   const {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
-    saveVideoLimit, toggleActive, doRefresh, doDelete,
+    saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
   } = useSourceRowActions(source, accessToken, workspaceId);
   const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
 
@@ -813,7 +884,12 @@ function SourceCard({ source, accessToken, workspaceId }) {
       <div className="flex items-center gap-3">
         <SourceThumb src={thumbUrl} />
         <div className="min-w-0 flex-1">
-          <div className="truncate" style={{ ...fB, fontSize: 14 }}>{source.query}</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate" style={{ ...fB, fontSize: 14 }}>{source.query}</span>
+            {source.isSelf && (
+              <span className="shrink-0 rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>You</span>
+            )}
+          </div>
           <div style={{ ...fM, fontSize: 11, color: T.muted }}>{source.sourceType} · {source.platform}</div>
         </div>
       </div>
@@ -832,7 +908,7 @@ function SourceCard({ source, accessToken, workspaceId }) {
       <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.line}` }}>
         <SourceRowActions
           source={source} issue={issue} busyAction={busyAction}
-          doRefresh={doRefresh} toggleActive={toggleActive}
+          doRefresh={doRefresh} toggleActive={toggleActive} toggleSelf={toggleSelf}
           setEditingLimit={setEditingLimit} setConfirmDelete={setConfirmDelete}
         />
       </div>

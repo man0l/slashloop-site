@@ -200,6 +200,11 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
             sources={sources}
             galleryCards={galleryCards}
           />
+          {card.isSelf && (
+            <span className="whitespace-nowrap rounded px-1.5 py-0.5" style={{ fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>
+              You
+            </span>
+          )}
           <span className="whitespace-nowrap">{fmt(card.views)} views</span>
           {card.postedAt != null && (
             <span className="whitespace-nowrap" title={new Date(card.postedAt).toLocaleString()}>
