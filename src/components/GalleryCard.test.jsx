@@ -128,6 +128,45 @@ describe("GalleryCard — analyze flow", () => {
     renderCard();
     expect(screen.queryByTestId("hook-test-badge")).not.toBeInTheDocument();
   });
+});
+
+describe("GalleryCard — hook-test entry (server truth, not hover state)", () => {
+  // The start affordance keys off the gallery payload (analyzedBy / hookTest),
+  // so it must render before any hover hydration happens.
+  it("offers the paid start on an analyzed video with no open test", () => {
+    renderCard(<GalleryCard card={{ ...card, analyzedBy: "openrouter" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    expect(screen.getByTestId("start-hook-test")).toBeInTheDocument();
+  });
+
+  it("offers no start on an un-analyzed video (the openings inherit an analysis)", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard(<GalleryCard card={{ ...card }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    expect(screen.queryByTestId("start-hook-test")).not.toBeInTheDocument();
+  });
+
+  it("offers no start when a test is already open — the badge is the way in", () => {
+    renderCard(
+      <GalleryCard
+        card={{ ...card, analyzedBy: "openrouter", hookTest: { id: "ht-1", status: "picking", pickedCount: 0 } }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+    expect(screen.queryByTestId("start-hook-test")).not.toBeInTheDocument();
+    expect(screen.getByTestId("hook-test-badge")).toBeInTheDocument();
+  });
+
+  it("clicking start opens the cost-confirming start dialog, not an immediate charge", async () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard(<GalleryCard card={{ ...card, analyzedBy: "openrouter" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+
+    fireEvent.click(screen.getByTestId("start-hook-test"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Start AI hook test" });
+    expect(within(dialog).getByText(/Costs 2 credits/)).toBeInTheDocument();
+    expect(analyzeVideo).not.toHaveBeenCalled();
+  });
 
   it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
     getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null

@@ -17,6 +17,7 @@ const EmailSettings = lazy(() => import("./pages/EmailSettings.jsx"));
 const Sources = lazy(() => import("./pages/Sources.jsx"));
 const Discover = lazy(() => import("./pages/Discover.jsx"));
 const Gallery = lazy(() => import("./pages/Gallery.jsx"));
+const HookTests = lazy(() => import("./pages/HookTests.jsx"));
 const Studio = lazy(() => import("./pages/Studio.jsx"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess.jsx"));
 const BillingCancel = lazy(() => import("./pages/BillingCancel.jsx"));
@@ -64,6 +65,7 @@ function Nav() {
       <Link to="/discover" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Discover</Link>
       <Link to="/sources" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Sources</Link>
       <Link to="/gallery" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Gallery</Link>
+      <Link to="/tests" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Hook tests</Link>
       <Link to="/studio" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Studio</Link>
     </>
   );
@@ -173,6 +175,7 @@ export default function App() {
             <Route path="/discover" element={<Discover />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/gallery" element={<Gallery />} />
+            <Route path="/tests" element={<HookTests />} />
             <Route path="/studio" element={<Studio />} />
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route path="/billing/cancel" element={<BillingCancel />} />

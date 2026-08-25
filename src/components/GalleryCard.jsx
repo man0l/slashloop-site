@@ -19,6 +19,7 @@ import useVideoAnalysis from "../lib/useVideoAnalysis.js";
 import { displayMediaUrl, displayMediaUrls } from "../lib/mediaUrl.js";
 import AnalysisModal from "./AnalysisModal.jsx";
 import CreatorChip from "./CreatorChip.jsx";
+import HookTestPanel, { StartHookTestDialog } from "./HookTestPanel.jsx";
 
 const thumbStyle = { width: "100%", aspectRatio: "9/16", background: "#E7E8E3" };
 
@@ -96,6 +97,11 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   });
   const videoRef = useRef(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  // Hook-test surfaces. `startOpen` is the paid entry dialog (only offered for
+  // analyzed videos with no open test — server truth via card.analyzedBy /
+  // card.hookTest, never hover-hydration state); `testOpen` is the full panel.
+  const [startOpen, setStartOpen] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
 
   const handled = phase === "done";
   const working = phase === "checking" || phase === "queued" || phase === "running";
@@ -206,14 +212,16 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
             </span>
           )}
           {card.hookTest && (
-            <span
-              className="whitespace-nowrap rounded px-1.5 py-0.5"
-              style={{ fontWeight: 600, color: "#7C5CFF", background: "#F2EEFF" }}
+            <button
+              type="button"
+              onClick={() => setTestOpen(true)}
+              className="whitespace-nowrap rounded px-1.5 py-0.5 transition-opacity hover:opacity-80"
+              style={{ fontWeight: 600, color: "#7C5CFF", background: "#F2EEFF", cursor: "pointer" }}
               title={`Open AI hook test (${card.hookTest.status})${card.hookTest.pickedCount > 0 ? ` — ${card.hookTest.pickedCount} opening${card.hookTest.pickedCount === 1 ? "" : "s"} picked` : ""}`}
               data-testid="hook-test-badge"
             >
               🧪{card.hookTest.pickedCount > 0 ? ` ${card.hookTest.pickedCount} picked` : " hook test"}
-            </span>
+            </button>
           )}
           <span className="whitespace-nowrap">{fmt(card.views)} views</span>
           {card.postedAt != null && (
@@ -322,6 +330,22 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           </div>
         )}
 
+        {/* Hook-test entry — keyed off server truth from the gallery payload
+            (analyzedBy / hookTest), so it doesn't depend on hover hydration.
+            Analyzed + untested -> offer the paid start; tested -> the badge
+            above is the way in. */}
+        {card.analyzedBy != null && !card.hookTest && (
+          <button
+            type="button"
+            onClick={() => setStartOpen(true)}
+            data-testid="start-hook-test"
+            className="self-start rounded-md px-2.5 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
+            style={{ ...fB, fontSize: 12, border: "1.5px solid #7C5CFF", color: "#7C5CFF", background: "transparent" }}
+          >
+            🧪 Test hooks on this video · 2cr
+          </button>
+        )}
+
         <a href={card.url} target="_blank" rel="noreferrer" style={{ ...fM, fontSize: 11, color: T.muted }}>
           open on TikTok
         </a>
@@ -329,6 +353,29 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
 
       {showAnalysis && detail?.analysis && (
         <AnalysisModal detail={detail} onClose={() => setShowAnalysis(false)} onSeek={seekAndPlay} />
+      )}
+
+      {startOpen && (
+        <StartHookTestDialog
+          accessToken={accessToken}
+          workspaceId={workspaceId}
+          videoId={card.id}
+          onClose={() => setStartOpen(false)}
+          // Success AND "already open" (409) both land here — the panel shows
+          // whichever test the server has.
+          onStarted={() => {
+            setStartOpen(false);
+            setTestOpen(true);
+          }}
+        />
+      )}
+      {testOpen && (
+        <HookTestPanel
+          accessToken={accessToken}
+          workspaceId={workspaceId}
+          videoId={card.id}
+          onClose={() => setTestOpen(false)}
+        />
       )}
     </article>
   );
