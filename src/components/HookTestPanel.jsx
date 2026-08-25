@@ -80,8 +80,8 @@ export function StartHookTestDialog({ accessToken, workspaceId, videoId, onClose
     <Modal ariaLabel="Start AI hook test" onClose={busy ? () => {} : onClose}>
       <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>Test hooks on this video</div>
       <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
-        Generates four alternative openings from this video's proven angle — two starting cold, two
-        re-rolls — for you to pick from and shoot.{" "}
+        Generates four alternative openings from this video's proven angle — one per type
+        (recognition, specific number, contrarian, demo-first) — for you to pick from and shoot.{" "}
         <span style={{ fontWeight: 600, color: "#7C5CFF" }}>Costs 2 credits.</span>
       </p>
       <label className="mt-3 flex flex-col gap-1">
