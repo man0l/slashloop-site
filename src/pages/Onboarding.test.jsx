@@ -67,7 +67,8 @@ async function clickThroughToSetup() {
   fireEvent.click(screen.getByRole("button", { name: /set up my loop/i }));
 
   fireEvent.change(screen.getByTestId("onboarding-product-input"), { target: { value: "Sauna Tracker" } });
-  fireEvent.click(screen.getByRole("button", { name: /set up sauna tracker/i }));
+  // Enter advances Q1 — the keyboard path, not just the button.
+  fireEvent.keyDown(screen.getByTestId("onboarding-product-input"), { key: "Enter" });
 
   fireEvent.change(screen.getByTestId("onboarding-niche-input"), {
     target: { value: "home sauna, #saunatok, @coldplungequeen, extra keyword" },

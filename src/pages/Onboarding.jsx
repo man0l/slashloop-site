@@ -84,6 +84,7 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next") || "";
+  usePreloadShots();
 
   // Same key the Sources/Discover/Login pages use, so the "already done?"
   // check and the post-setup invalidation ride the same cache.
@@ -247,12 +248,12 @@ function ProblemScreen({ onNext }) {
 
 /**
  * A real product screenshot with a browser-chrome frame — proof beats
- * promises in a funnel. Hides itself until the file loads so a missing
- * image never shows a broken-image icon.
+ * promises in a funnel. A shimmer placeholder holds the frame's height
+ * while the image streams in (and onError hides the whole figure), so the
+ * layout never jumps and no broken-image icon can appear.
  */
 function Shot({ src, caption, maxHeight = 280 }) {
-  const [ok, setOk] = useState(true);
-  if (!ok) return null;
+  const [state, setState] = useState("loading"); // loading | ok | error
   return (
     <figure className="mt-6 mb-0">
       <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(20,24,29,0.14)" }}>
@@ -260,19 +261,36 @@ function Shot({ src, caption, maxHeight = 280 }) {
           {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
             <span key={c} className="w-2 h-2 rounded-full" style={{ background: c }} />
           ))}
-          <span className="ml-2 truncate" style={{ ...fM, fontSize: 10, color: "#7A828B" }}>slashloop.app{src.replace("/screens", "").replace(".jpg", "")}</span>
+          <span className="ml-2 truncate" style={{ ...fM, fontSize: 10, color: "#7A828B" }}>slashloop.app{src.replace("/screens/", "/").replace(/\.[a-z]+$/, "")}</span>
         </div>
-        <img
-          src={src}
-          alt={caption}
-          onError={() => setOk(false)}
-          className="block w-full"
-          style={{ maxHeight, objectFit: "cover", objectPosition: "top", background: T.paper }}
-        />
+        {state === "loading" && (
+          <div className="animate-pulse" style={{ height: maxHeight, background: "#E7E8E3" }} aria-hidden="true" />
+        )}
+        {state !== "error" && (
+          <img
+            src={src}
+            alt={caption}
+            onLoad={() => setState("ok")}
+            onError={() => setState("error")}
+            className={`block w-full ${state === "ok" ? "" : "hidden"}`}
+            style={{ maxHeight, objectFit: "cover", objectPosition: "top", background: T.paper }}
+          />
+        )}
       </div>
       <figcaption className="mt-2" style={{ ...fM, fontSize: 11, color: T.muted }}>{caption}</figcaption>
     </figure>
   );
+}
+
+// Warm the screenshot cache while the user reads screen 1 — by the time
+// they reach the proof, it's local.
+function usePreloadShots() {
+  useEffect(() => {
+    for (const src of ["/screens/gallery.jpg", "/screens/discover.jpg"]) {
+      const img = new Image();
+      img.src = src;
+    }
+  }, []);
 }
 
 function SolutionScreen({ onNext }) {
@@ -287,7 +305,7 @@ function SolutionScreen({ onNext }) {
         creator's own baseline, so concepts you can replicate <i>at 0 followers</i> rise to the top.
       </p>
       <Shot
-        src="/screens/gallery.png"
+        src="/screens/gallery.jpg"
         caption="the real feed — every card scored vs its creator's baseline"
       />
       <div className="mt-7">
@@ -328,6 +346,7 @@ function ProductQuestion({ value, onChange, onNext, onBack }) {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") onNext(); }}
         placeholder="e.g. Sauna Tracker"
         autoFocus
         className="mt-5 w-full max-w-md"
@@ -361,7 +380,7 @@ function NicheQuestion({ value, onChange, onNext, onBack }) {
         style={{ ...inputStyle, resize: "vertical" }}
         data-testid="onboarding-niche-input"
       />
-      <Shot src="/screens/discover.png" caption="type your niche — slashloop finds and verifies the sources" maxHeight={180} />
+      <Shot src="/screens/discover.jpg" caption="type your niche — slashloop finds and verifies the sources" maxHeight={180} />
       {items.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {items.map((item) => {
