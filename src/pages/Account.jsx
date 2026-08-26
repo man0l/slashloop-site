@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton, Skeleton } from "../components/ui.jsx";
 import CreditTopUp from "../components/CreditTopUp.jsx";
+import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { getBillingStatus, createPortalSession } from "../lib/api.js";
 
@@ -52,6 +53,8 @@ export default function Account() {
       <h1 className="mt-3" style={{ ...fD, fontWeight: 900, fontSize: 32, letterSpacing: -0.8 }}>
         {user.email}
       </h1>
+
+      <FirstRunSteps />
 
       <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
         <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>PLAN</div>

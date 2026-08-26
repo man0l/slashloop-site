@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, Skeleton } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
+import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
@@ -67,6 +68,8 @@ export default function Studio() {
       </p>
 
       <div className="mt-6"><WorkspaceSwitcher /></div>
+
+      <FirstRunSteps />
 
       {!activeWorkspaceId && !workspaceLoading && (
         <p className="mt-8" style={{ ...fB, fontSize: 14, color: T.muted }}>Create a workspace above first.</p>

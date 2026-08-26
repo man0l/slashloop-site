@@ -1,6 +1,6 @@
-// The default post-login destination is a routing decision, not a hard-coded
-// redirect: an account that tracks nothing yet activates better on /discover,
-// everyone else lands on /account as before. Explicit ?next values always win.
+// Post-sign-in destination: onboarding wins over everything until the first
+// source is tracked — even an explicit ?next (deep links, page bounces) —
+// then ?next is honored exactly as before.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -42,21 +42,35 @@ function renderLogin(initial = "/login") {
 
 describe("Login — post-sign-in destination", () => {
   beforeEach(() => {
-    listSources.mockClear();
+    listSources.mockReset();
+    listSources.mockResolvedValue([]);
     state.user = null;
     state.activeWorkspaceId = "ws-1";
   });
 
-  it("an explicit ?next wins without consulting anything", () => {
+  it("an incomplete onboarding wins even over an explicit ?next", async () => {
     state.user = { id: "u1" };
     renderLogin("/login?next=/gallery");
-    expect(screen.getByText("LANDED_GALLERY")).toBeInTheDocument();
+    expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
+  });
+
+  it("no workspace yet -> /discover, explicit ?next included", async () => {
+    state.user = { id: "u1" };
+    state.activeWorkspaceId = null;
+    renderLogin("/login?next=/gallery");
+    expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
     expect(listSources).not.toHaveBeenCalled();
+  });
+
+  it("a finished onboarding honors an explicit ?next", async () => {
+    state.user = { id: "u1" };
+    listSources.mockResolvedValue([{ id: "s0", sourceType: "keyword", query: "x" }]);
+    renderLogin("/login?next=/gallery");
+    expect(await screen.findByText("LANDED_GALLERY")).toBeInTheDocument();
   });
 
   it("a first-run workspace (no sources) is routed to /discover", async () => {
     state.user = { id: "u1" };
-    listSources.mockResolvedValue([]);
     renderLogin();
     expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
   });
@@ -68,12 +82,11 @@ describe("Login — post-sign-in destination", () => {
     expect(await screen.findByText("LANDED_ACCOUNT")).toBeInTheDocument();
   });
 
-  it("no workspace yet -> /discover renders its create-a-workspace state", async () => {
+  it("a failed sources fetch never traps onboarding — honor ?next", async () => {
     state.user = { id: "u1" };
-    state.activeWorkspaceId = null;
-    renderLogin();
-    expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
-    expect(listSources).not.toHaveBeenCalled();
+    listSources.mockRejectedValue(new Error("boom"));
+    renderLogin("/login?next=/gallery");
+    expect(await screen.findByText("LANDED_GALLERY")).toBeInTheDocument();
   });
 });
 

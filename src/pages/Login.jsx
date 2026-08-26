@@ -20,12 +20,12 @@ export default function Login() {
   // button just appears to do nothing.
   const oauthError = params.get("error_description") || params.get("error");
 
-  if (user && next !== "/account") return <Navigate to={next} replace />;
-  // An explicit ?next means the user was trying to reach something specific —
-  // honor it above. The DEFAULT destination ("/account", including its
-  // round-trip through the OAuth redirect) is where first-run routing kicks
-  // in: an account that tracks nothing yet activates better on /discover.
-  if (user) return <FirstRunGate />;
+  // Every signed-in arrival goes through the first-run gate, explicit ?next
+  // included: an account that hasn't tracked its first source yet (deep links
+  // from llms.txt, bookmarks and the page-level ?next bounces all land here)
+  // activates better on /discover than on an empty page. The gate honors
+  // ?next once onboarding is complete.
+  if (user) return <FirstRunGate next={next} />;
 
   async function oauth(provider) {
     setStatus("loading");
@@ -96,13 +96,15 @@ export default function Login() {
 }
 
 /**
- * Default-destination routing: send brand-new workspaces to /discover (their
- * niche isn't tracked yet — activation IS seeing a first outlier), everyone
- * else on to /account as before. Shares the ["sources", workspaceId] cache
- * with the Sources/Discover pages, so this costs no extra fetch right after
+ * Post-sign-in routing: an account that hasn't finished onboarding (no
+ * workspace, or one that tracks zero sources) goes to /discover — activation
+ * IS seeing a first outlier, and this wins over an explicit ?next so
+ * deep-link arrivals still get onboarded. Everyone else is sent to ?next
+ * ("/account" by default). Shares the ["sources", workspaceId] cache with
+ * the Sources/Discover pages, so this costs no extra fetch right after
  * tracking something.
  */
-function FirstRunGate() {
+function FirstRunGate({ next }) {
   const { accessToken } = useAuth();
   const { activeWorkspaceId, loading: workspaceLoading } = useWorkspace();
 
@@ -123,6 +125,8 @@ function FirstRunGate() {
   // Signed in but no workspace yet -> /discover renders its own
   // "create a workspace above first" state.
   if (!activeWorkspaceId) return <Navigate to="/discover" replace />;
-  if (sourcesQuery.isError) return <Navigate to="/account" replace />;
-  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? "/account" : "/discover"} />;
+  // A failed sources fetch must never trap someone in onboarding — send them
+  // where they were headed and let the destination page surface the error.
+  if (sourcesQuery.isError) return <Navigate to={next} replace />;
+  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? next : "/discover"} />;
 }

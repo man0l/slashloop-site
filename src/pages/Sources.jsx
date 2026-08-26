@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmtAge } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, ConfirmDialog, IconButton, Modal, RefreshIcon, PauseIcon, PlayIcon, TrashIcon, WarningIcon, EditIcon, CloseIcon, Skeleton } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
+import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
@@ -995,6 +996,8 @@ export default function Sources() {
       <div className="mt-6">
         <WorkspaceSwitcher />
       </div>
+
+      <FirstRunSteps />
 
       <div className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
         <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>TRACK A NEW SOURCE</div>

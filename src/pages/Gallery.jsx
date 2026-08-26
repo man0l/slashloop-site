@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, Skeleton, Spinner, CloseIcon } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
+import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { listSources } from "../lib/sources.js";
@@ -151,6 +152,8 @@ export default function Gallery() {
       <div className="mt-6">
         <WorkspaceSwitcher />
       </div>
+
+      <FirstRunSteps />
 
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">

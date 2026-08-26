@@ -8,6 +8,7 @@ import { Link, Navigate } from "react-router-dom";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, Skeleton, Spinner } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
+import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useHookTestList } from "../lib/useHookTests.js";
@@ -132,6 +133,8 @@ export default function HookTests() {
       <div className="mt-6">
         <WorkspaceSwitcher />
       </div>
+
+      <FirstRunSteps />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <p style={{ ...fB, fontSize: 13, color: T.muted, margin: 0 }}>
