@@ -1,0 +1,71 @@
+# slashloop
+
+> slashloop watches short-form video in your niche (TikTok first), scores every
+> post against its own creator's baseline, and flags the outliers — the videos
+> that massively over-performed. Then it turns each outlier into assets you can
+> ship: the extracted hook, rewritten variations, a shot-by-shot brief, a
+> script, and AI hook tests that generate four alternative openings to pit
+> against each other. Built for app developers using short-form video to grow
+> installs — beginners at content, fluent with agents and CLIs.
+
+The product loop: **track niche → rank outliers → extract what worked →
+generate your version → test openings → track results.**
+
+Drive it by chat through MCP, or by hand in the web app — both hit the same
+account and the same credit balance.
+
+## Connect
+
+- [MCP server](https://mcp.slashloop.dev/mcp): add `https://mcp.slashloop.dev/mcp`
+  as a custom connector (Claude Desktop, Cowork, claude.ai) or point any MCP
+  client at it. First call opens a sign-in + consent flow.
+- [Web app](https://slashloop.app): sign in at
+  [login](https://slashloop.app/login). Key surfaces:
+  [Discover](https://slashloop.app/discover) (keyword-driven source ideas),
+  [Sources](https://slashloop.app/sources),
+  [Gallery](https://slashloop.app/gallery) (scored outliers),
+  [Hook tests](https://slashloop.app/tests),
+  [Studio](https://slashloop.app/studio) (post log, weekly retro),
+  [Account](https://slashloop.app/account).
+
+## What the tools do
+
+Roughly fifty MCP tools; the ones that matter most, by job:
+
+- **Find sources:** `discover`, `suggest_sources` — keyword-driven suggestions
+  you can track directly.
+- **Track a niche:** `create_source` (hashtags, creators, keywords),
+  `refresh_source`, `list_due_sources`, `delete_source`.
+- **Read results:** `get_feed`, `get_outlier_summary`, `get_benchmark`,
+  `get_video`, `get_video_transcript`, `search_library`.
+- **Turn an outlier into assets:** `analyze_video` explains why it worked;
+  `extract_hook`, `generate_hook_variations`, `create_brief`,
+  `generate_script` produce the remake material.
+- **AI hook tests:** `start_hook_test` mines one proven video into an editable
+  insight ("the lock") plus four alternative openings — recognition,
+  specific-number, contrarian, demo-first. `pick_hook_versions` keeps the
+  contenders, `reroll_hooks` regenerates under the lock, `export_shotlist`
+  renders a markdown shoot plan, `close_hook_test` archives the test — with
+  `winner` naming the opening that beat the original ("C won").
+- **Keep the loop running:** boards (`save_to_board`), an idea queue with due
+  dates (`create_idea`, `list_ideas`), `get_weekly_retro` for your own account,
+  and `get_digest` for the weekly breakout email.
+
+## Costs
+
+1 credit = $0.01. Reading anything is free. Spending roughly: refresh/discover
+≈ 1.5 credits per video fetched, analyze 5, extract/variations/brief/script
+steps 2, start or re-roll a hook test 2. Every money-spending tool states its
+cost before it charges, and failed calls refund automatically.
+
+## Plans
+
+- **Free** — $0: 300 credits/month, 2 sources, manual refresh.
+- **Creator** — $29/mo or $290/yr: 3,000 credits/month, 10 sources, scheduled
+  weekly refresh.
+- **Pro** — $79/mo or $790/yr: 10,000 credits/month, 30 sources, daily
+  refresh, alerts, direct API access.
+- Pay-as-you-go credit top-ups from $10 — no subscription required.
+
+Checkout at [pricing](https://slashloop.app/pricing); balance, top-up and
+billing portal at [account](https://slashloop.app/account).
