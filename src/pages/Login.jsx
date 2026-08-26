@@ -15,6 +15,11 @@ export default function Login() {
   const [status, setStatus] = useState("idle"); // idle | loading | error
   const [error, setError] = useState("");
 
+  // OAuth failures come back from Supabase as query params on this same page
+  // (?error=server_error&error_description=…) — without surfacing them the
+  // button just appears to do nothing.
+  const oauthError = params.get("error_description") || params.get("error");
+
   if (user && next !== "/account") return <Navigate to={next} replace />;
   // An explicit ?next means the user was trying to reach something specific —
   // honor it above. The DEFAULT destination ("/account", including its
@@ -71,6 +76,17 @@ export default function Login() {
           Continue with GitHub
         </button>
       </div>
+
+      {oauthError && (
+        <p
+          data-testid="oauth-error"
+          className="mt-3 rounded-md px-3 py-2"
+          style={{ ...fB, fontSize: 12, color: "#B3261E", background: "#FBEDEC", border: "1px solid #F2C6C2" }}
+        >
+          Sign-in failed: {oauthError}. Try again, or use another provider — if it keeps happening the
+          provider may be misconfigured.
+        </p>
+      )}
 
       {status === "error" && (
         <p className="mt-3" style={{ ...fB, fontSize: 12, color: "#B3261E" }}>{error}</p>

@@ -76,3 +76,21 @@ describe("Login — post-sign-in destination", () => {
     expect(listSources).not.toHaveBeenCalled();
   });
 });
+
+describe("Login — OAuth error round-trip", () => {
+  beforeEach(() => {
+    state.user = null;
+  });
+
+  it("surfaces the provider failure Supabase redirects back with", () => {
+    renderLogin(
+      "/login?error=server_error&error_code=unexpected_failure" +
+        "&error_description=" + encodeURIComponent("Error getting user profile from external provider"),
+    );
+    const banner = screen.getByTestId("oauth-error");
+    expect(banner.textContent).toContain("Sign-in failed");
+    expect(banner.textContent).toContain("Error getting user profile from external provider");
+    // The buttons stay usable so the person can try Google instead.
+    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+  });
+});
