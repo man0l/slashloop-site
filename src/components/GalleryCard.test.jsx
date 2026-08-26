@@ -128,6 +128,15 @@ describe("GalleryCard — analyze flow", () => {
     renderCard();
     expect(screen.queryByTestId("hook-test-badge")).not.toBeInTheDocument();
   });
+
+  it("a won test badges its winner instead of the pick count", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    renderCard(
+      <GalleryCard card={{ ...card, hookTest: { id: "ht-1", status: "won", pickedCount: 2, winnerLabel: "C" } }} index={1} accessToken="tok-1" workspaceId="ws-1" />,
+    );
+    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 C won");
+    expect(screen.getByTestId("hook-test-badge")).toHaveAccessibleDescription(/opening C beat the original/i);
+  });
 });
 
 describe("GalleryCard — hook-test entry (server truth, not hover state)", () => {
@@ -155,6 +164,19 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     );
     expect(screen.queryByTestId("start-hook-test")).not.toBeInTheDocument();
     expect(screen.getByTestId("hook-test-badge")).toBeInTheDocument();
+  });
+
+  it("a won test is archived — the card offers a fresh start beside its C-won badge", () => {
+    renderCard(
+      <GalleryCard
+        card={{ ...card, analyzedBy: "openrouter", hookTest: { id: "ht-1", status: "won", pickedCount: 2, winnerLabel: "C" } }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 C won");
+    expect(screen.getByTestId("start-hook-test")).toBeInTheDocument();
   });
 
   it("clicking start opens the cost-confirming start dialog, not an immediate charge", async () => {

@@ -7,9 +7,10 @@
 //   Pick                        → checkbox the winners, Save picks
 //   Re-roll                     → discard drafts, regenerate under the lock (2cr)
 //   Export                      → shot list markdown, copy or download
-//   Close                       → archive as won/closed
+//   Close                       → archive as won/closed; a win names the
+//                                 opening that beat the original ("C won")
 //
-// Server truth wins: the panel always fetches the open test itself, and any
+// Server truth wins: the panel always fetches the test itself, and any
 // 409/404 from a mutation triggers a refetch instead of a blind retry.
 
 import { useEffect, useRef, useState } from "react";
@@ -126,14 +127,14 @@ export function StartHookTestDialog({ accessToken, workspaceId, videoId, onClose
   );
 }
 
-function VersionRow({ v, checked, pickable, onToggle }) {
+function VersionRow({ v, checked, pickable, isWinner, onToggle }) {
   return (
     <label
       data-testid={`hook-version-row-${v.label}`}
       className="flex items-start gap-2 rounded-md px-2 py-2"
       style={{
-        border: `1px solid ${checked ? "#7C5CFF" : T.line}`,
-        background: checked ? "#F9F7FF" : T.card,
+        border: `1px solid ${isWinner ? "#0F7B6C" : checked ? "#7C5CFF" : T.line}`,
+        background: isWinner ? "#F4FAF8" : checked ? "#F9F7FF" : T.card,
         cursor: pickable ? "pointer" : "default",
         opacity: v.status === "discarded" ? 0.45 : 1,
       }}
@@ -153,7 +154,9 @@ function VersionRow({ v, checked, pickable, onToggle }) {
         {v.label}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span style={{ ...fB, fontSize: 13, fontWeight: 600, color: T.ink, overflowWrap: "anywhere" }}>{v.hookText}</span>
+        <span style={{ ...fB, fontSize: 13, fontWeight: 600, color: T.ink, overflowWrap: "anywhere" }}>
+          {isWinner ? "🏆 " : ""}{v.hookText}
+        </span>
         {v.firstFrame && (
           <span style={{ ...fB, fontSize: 12, fontStyle: "italic", color: T.muted }}>
             First frame: {v.firstFrame}
@@ -259,6 +262,73 @@ function ShotlistSection({ accessToken, workspaceId, videoId }) {
   );
 }
 
+/**
+ * The manual verdict: name WHICH opening beat the original before the test
+ * archives as won. Candidates are the picked openings, or — when nothing was
+ * picked — every live proposal of the latest round. Phase 4 replaces this
+ * with auto-scoring against the owner baseline.
+ */
+function WonDialog({ candidates, busy, onConfirm, onCancel }) {
+  const [pick, setPick] = useState(candidates[0]?.label ?? null);
+  return (
+    <Modal ariaLabel="Which opening won?" onClose={busy ? () => {} : onCancel}>
+      <div style={{ ...fB, fontSize: 15, fontWeight: 700, color: T.ink }}>Which opening won?</div>
+      <p className="mt-2" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
+        Names the winner in the archive and on the gallery card. You can change your mind later by starting a fresh test.
+      </p>
+      <div className="mt-3 flex flex-col gap-1.5" data-testid="won-candidates">
+        {candidates.map((v) => (
+          <label
+            key={v.label}
+            className="flex items-start gap-2 rounded-md px-2 py-2"
+            style={{
+              border: `1px solid ${pick === v.label ? "#0F7B6C" : T.line}`,
+              background: pick === v.label ? "#F4FAF8" : T.card,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="radio"
+              name="hook-test-winner"
+              checked={pick === v.label}
+              onChange={() => setPick(v.label)}
+              style={{ accentColor: "#0F7B6C", marginTop: 3 }}
+            />
+            <span
+              className="flex items-center justify-center rounded shrink-0"
+              style={{ ...fM, fontSize: 11, fontWeight: 700, width: 20, height: 20, background: "#14181D", color: "#fff" }}
+            >
+              {v.label}
+            </span>
+            <span className="flex min-w-0 flex-col">
+              <span style={{ ...fB, fontSize: 13, fontWeight: 600, color: T.ink, overflowWrap: "anywhere" }}>{v.hookText}</span>
+              {v.hookType && (
+                <span style={{ ...fM, fontSize: 10.5, color: T.muted }}>{v.hookType.replaceAll("_", " ")}</span>
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={busy} className="rounded-md px-3 py-1.5" style={{ ...fB, fontSize: 13, color: T.muted }}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => onConfirm(pick)}
+          disabled={busy || !pick}
+          data-testid="confirm-winner"
+          className="rounded-md px-3 py-1.5 font-semibold inline-flex items-center gap-1.5"
+          style={{ ...fB, fontSize: 13, background: T.teal, color: "#fff", opacity: busy || !pick ? 0.6 : 1 }}
+        >
+          {busy && <Spinner />}
+          {pick ? `${pick} won 🏆` : "Won 🏆"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function HookTestPanel({ accessToken, workspaceId, videoId, onClose }) {
   const q = useOpenHookTest({ accessToken, workspaceId, videoId });
   const lockM = useUpdateHookTestLock();
@@ -279,7 +349,8 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
   const chipsDirty = useRef(false);
   const [banner, setBanner] = useState(null); // string
   const [confirmReroll, setConfirmReroll] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(null); // null | 'won' | 'closed'
+  const [confirmClose, setConfirmClose] = useState(false); // plain "close without posting"
+  const [wonOpen, setWonOpen] = useState(false); // the verdict dialog
 
   useEffect(() => {
     if (!test) return;
@@ -292,6 +363,14 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
   }, [test?.id, versionSig]);
 
   const isOpen = Boolean(test && OPEN_STATUSES.has(test.status));
+  // The manual verdict chooses among picked openings; with no picks, every
+  // live proposal of the latest round is eligible.
+  const verdictCandidates = (() => {
+    const picked = versions.filter((v) => v.status === "picked");
+    if (picked.length > 0) return picked;
+    const latestRound = versions.reduce((m, v) => Math.max(m, v.round), 0);
+    return versions.filter((v) => v.status === "proposed" && v.round === latestRound);
+  })();
   const serverPicked = versions.filter((v) => v.status === "picked").map((v) => v.label).sort();
   const picksChanged =
     JSON.stringify([...picks].sort()) !== JSON.stringify(serverPicked) && [...picks].some((l) => versions.some((v) => v.label === l));
@@ -378,10 +457,11 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
     }
   }
 
-  async function closeAs(outcome) {
-    setConfirmClose(null);
+  async function closeAs(outcome, winner) {
+    setConfirmClose(false);
+    setWonOpen(false);
     try {
-      await closeM.mutateAsync({ accessToken, workspaceId, videoId, outcome });
+      await closeM.mutateAsync({ accessToken, workspaceId, videoId, outcome, ...(winner ? { winner } : {}) });
       onClose(); // nothing left to manage here — back to the list/gallery
     } catch (err) {
       fail(err, "Couldn't close the test.");
@@ -406,7 +486,9 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
             <div style={{ ...fM, fontSize: 11, letterSpacing: 3, color: "#7C5CFF" }}>AI HOOK TEST</div>
             {test && (
               <div className="flex items-center gap-2">
-                <span style={statusChipStyle(test.status)}>{test.status}</span>
+                <span style={statusChipStyle(test.status)}>
+                  {test.status === "won" && test.winnerLabel ? `${test.winnerLabel} won` : test.status}
+                </span>
                 <span style={{ ...fM, fontSize: 11, color: T.muted }}>opened {fmtAge(Date.parse(test.createdAt))} ago</span>
               </div>
             )}
@@ -552,6 +634,7 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
                       v={v}
                       checked={picks.has(v.label)}
                       pickable={isOpen && (v.status === "proposed" || v.status === "picked")}
+                      isWinner={test.status === "won" && test.winnerLabel != null && v.label === test.winnerLabel}
                       onToggle={() => togglePick(v.label)}
                     />
                   ))}
@@ -592,8 +675,9 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
                 <span style={{ ...fB, fontSize: 12, color: T.muted }}>Done with this test?</span>
                 <button
                   type="button"
-                  onClick={() => setConfirmClose("won")}
+                  onClick={() => (verdictCandidates.length > 0 ? setWonOpen(true) : setConfirmClose(true))}
                   disabled={busy}
+                  data-testid="mark-won"
                   className="rounded-md px-2.5 py-1 font-semibold"
                   style={{ ...fB, fontSize: 12, background: T.teal, color: "#fff" }}
                 >
@@ -624,19 +708,23 @@ export default function HookTestPanel({ accessToken, workspaceId, videoId, onClo
         onCancel={() => setConfirmReroll(false)}
       />
       <ConfirmDialog
-        open={Boolean(confirmClose)}
-        title={confirmClose === "won" ? "Mark this test won?" : "Close this test?"}
-        message={
-          confirmClose === "won"
-            ? "Archives the test as won — a picked opening beat the original. You can find it later under closed tests."
-            : "Archives the test without posting. You can find it later under closed tests."
-        }
-        confirmLabel={confirmClose === "won" ? "Won 🏆" : "Close test"}
-        danger={confirmClose === "closed"}
+        open={confirmClose}
+        title="Close this test?"
+        message="Archives the test without posting. You can find it later under closed tests."
+        confirmLabel="Close test"
+        danger
         busy={closeM.isPending}
-        onConfirm={() => closeAs(confirmClose)}
-        onCancel={() => setConfirmClose(null)}
+        onConfirm={() => closeAs("closed")}
+        onCancel={() => setConfirmClose(false)}
       />
+      {wonOpen && (
+        <WonDialog
+          candidates={verdictCandidates}
+          busy={closeM.isPending}
+          onConfirm={(label) => closeAs("won", label)}
+          onCancel={() => setWonOpen(false)}
+        />
+      )}
     </Modal>
   );
 }

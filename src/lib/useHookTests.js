@@ -89,8 +89,8 @@ export function useRerollHooks() {
 export function useCloseHookTest() {
   const invalidate = useInvalidateHookTests();
   return useMutation({
-    mutationFn: ({ accessToken, workspaceId, videoId, outcome }) =>
-      closeHookTest(accessToken, { workspaceId, videoId, outcome }),
+    mutationFn: ({ accessToken, workspaceId, videoId, outcome, winner }) =>
+      closeHookTest(accessToken, { workspaceId, videoId, outcome, winner }),
     onSettled: invalidate,
   });
 }

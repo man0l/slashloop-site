@@ -1,11 +1,16 @@
 // Client for the connector's AI hook-test REST surface (VITE_MCP_URL):
-//   GET   /api/videos/:id/hook-test            -> { test | null }
+//   GET   /api/videos/:id/hook-test            -> { test | null } — the open
+//                                                 test, else the most recent
+//                                                 of any status (a won/closed
+//                                                 test stays viewable read-only)
 //   POST   …/hook-test  { brandContext?, insight? }        (2 credits)
 //   PATCH  …/hook-test  { insight?, sameIn? }               (free — edit the lock)
 //   POST   …/hook-test/pick { picks: ["A","C"] }
 //   POST   …/hook-test/reroll                           (2 credits)
 //   GET    …/hook-test/shotlist       -> { markdown }
-//   POST   …/hook-test/close { outcome? }
+//   POST   …/hook-test/close { outcome?, winner? }        ("won" may name the
+//                                                          opening that beat
+//                                                          the original)
 //   GET    /api/workspaces?resource=hook-tests&includeClosed=1 -> { tests }
 //
 // Contract lives in the connector's api/videos.ts + src/lib/hook-tests.ts.
@@ -60,8 +65,12 @@ export function getShotlist(accessToken, { workspaceId, videoId }, signal) {
   return apiFetch(`${vid(videoId)}/shotlist?${params.toString()}`, { accessToken, signal });
 }
 
-export function closeHookTest(accessToken, { workspaceId, videoId, outcome }) {
-  return apiFetch(`${vid(videoId)}/close`, { method: "POST", accessToken, body: { workspaceId, ...(outcome ? { outcome } : {}) } });
+export function closeHookTest(accessToken, { workspaceId, videoId, outcome, winner }) {
+  return apiFetch(`${vid(videoId)}/close`, {
+    method: "POST",
+    accessToken,
+    body: { workspaceId, ...(outcome ? { outcome } : {}), ...(winner ? { winner } : {}) },
+  });
 }
 
 /** Workspace-wide index for the /tests page. */

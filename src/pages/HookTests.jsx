@@ -55,7 +55,9 @@ function Row({ t, onOpen }) {
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex items-center gap-2">
           <span style={{ ...fM, fontSize: 12, fontWeight: 700, color: T.ink }}>{t.creatorHandle || "unknown"}</span>
-          <span style={statusChipStyle(t.status)}>{t.status}</span>
+          <span style={statusChipStyle(t.status)}>
+            {t.status === "won" && t.winnerLabel ? `${t.winnerLabel} won` : t.status}
+          </span>
           <span style={{ ...fM, fontSize: 11, color: T.muted }}>
             {t.pickedCount}/{t.proposalCount} picked · {ageOf(t.createdAt)}
           </span>

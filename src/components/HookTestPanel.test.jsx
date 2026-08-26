@@ -190,6 +190,41 @@ describe("HookTestPanel", () => {
     expect(screen.getByTestId("hook-version-check-A").disabled).toBe(true);
   });
 
+  it("marking won asks WHICH opening won and archives with the winner label", async () => {
+    renderPanel({
+      test: testFor({ versions: [version("A", "picked"), version("B", "picked"), version("C", "proposed"), version("D", "discarded")] }),
+    });
+    const closeM = hooks.useCloseHookTest.mock.results[0].value;
+
+    fireEvent.click(screen.getByTestId("mark-won"));
+
+    // The verdict dialog lists only the picked openings, unspent until confirmed.
+    const dialog = within(screen.getByRole("dialog", { name: "Which opening won?" }));
+    expect(dialog.getByText(/A — cold open/)).toBeInTheDocument();
+    expect(dialog.getByText(/B — cold open/)).toBeInTheDocument();
+    expect(dialog.queryByText(/C — cold open/)).not.toBeInTheDocument();
+    expect(closeM.mutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(dialog.getByRole("radio", { name: /B — cold open/ }));
+    fireEvent.click(screen.getByTestId("confirm-winner"));
+    await waitFor(() =>
+      expect(closeM.mutateAsync).toHaveBeenCalledWith({ accessToken: "tok-1", workspaceId: "ws-1", videoId: "vid-1", outcome: "won", winner: "B" }),
+    );
+  });
+
+  it("a won test shows the winner in the header and trophies the winning row", () => {
+    renderPanel({
+      test: testFor({
+        status: "won",
+        winnerLabel: "B",
+        versions: [version("A", "discarded"), version("B", "picked"), version("C", "discarded"), version("D", "discarded")],
+      }),
+    });
+
+    expect(screen.getByText("B won")).toBeInTheDocument();
+    expect(within(screen.getByTestId("hook-version-row-B")).getByText(/🏆/)).toBeInTheDocument();
+  });
+
   it("a load failure renders the friendly message with a retry", async () => {
     renderPanel({
       test: null,
