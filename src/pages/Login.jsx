@@ -97,12 +97,12 @@ export default function Login() {
 
 /**
  * Post-sign-in routing: an account that hasn't finished onboarding (no
- * workspace, or one that tracks zero sources) goes to /discover — activation
- * IS seeing a first outlier, and this wins over an explicit ?next so
- * deep-link arrivals still get onboarded. Everyone else is sent to ?next
- * ("/account" by default). Shares the ["sources", workspaceId] cache with
- * the Sources/Discover pages, so this costs no extra fetch right after
- * tracking something.
+ * workspace, or one that tracks zero sources) goes through the /onboarding
+ * funnel — problem → solution → survey → setup — and this wins over an
+ * explicit ?next so deep-link arrivals still get onboarded. Everyone else is
+ * sent to ?next ("/account" by default). Shares the ["sources", workspaceId]
+ * cache with the Sources/Discover pages, so this costs no extra fetch right
+ * after tracking something.
  */
 function FirstRunGate({ next }) {
   const { accessToken } = useAuth();
@@ -122,11 +122,10 @@ function FirstRunGate({ next }) {
       </section>
     );
   }
-  // Signed in but no workspace yet -> /discover renders its own
-  // "create a workspace above first" state.
-  if (!activeWorkspaceId) return <Navigate to="/discover" replace />;
+  // Signed in but no workspace yet -> the funnel creates one at the end.
+  if (!activeWorkspaceId) return <Navigate to="/onboarding" replace />;
   // A failed sources fetch must never trap someone in onboarding — send them
   // where they were headed and let the destination page surface the error.
   if (sourcesQuery.isError) return <Navigate to={next} replace />;
-  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? next : "/discover"} />;
+  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? next : "/onboarding"} />;
 }

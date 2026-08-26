@@ -12,6 +12,7 @@ import Home from "./pages/Home.jsx";
 // pay for the marketing pages' JS and vice versa.
 const Pricing = lazy(() => import("./pages/Pricing.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
+const Onboarding = lazy(() => import("./pages/Onboarding.jsx"));
 const Account = lazy(() => import("./pages/Account.jsx"));
 const EmailSettings = lazy(() => import("./pages/EmailSettings.jsx"));
 const Sources = lazy(() => import("./pages/Sources.jsx"));
@@ -170,6 +171,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/account" element={<Account />} />
             <Route path="/settings/email" element={<EmailSettings />} />
             <Route path="/discover" element={<Discover />} />

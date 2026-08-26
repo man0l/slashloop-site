@@ -31,6 +31,7 @@ function renderLogin(initial = "/login") {
       <MemoryRouter initialEntries={[initial]}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/onboarding" element={<div>LANDED_ONBOARDING</div>} />
           <Route path="/account" element={<div>LANDED_ACCOUNT</div>} />
           <Route path="/discover" element={<div>LANDED_DISCOVER</div>} />
           <Route path="/gallery" element={<div>LANDED_GALLERY</div>} />
@@ -51,14 +52,14 @@ describe("Login — post-sign-in destination", () => {
   it("an incomplete onboarding wins even over an explicit ?next", async () => {
     state.user = { id: "u1" };
     renderLogin("/login?next=/gallery");
-    expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
+    expect(await screen.findByText("LANDED_ONBOARDING")).toBeInTheDocument();
   });
 
-  it("no workspace yet -> /discover, explicit ?next included", async () => {
+  it("no workspace yet -> the funnel, explicit ?next included", async () => {
     state.user = { id: "u1" };
     state.activeWorkspaceId = null;
     renderLogin("/login?next=/gallery");
-    expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
+    expect(await screen.findByText("LANDED_ONBOARDING")).toBeInTheDocument();
     expect(listSources).not.toHaveBeenCalled();
   });
 
@@ -69,10 +70,10 @@ describe("Login — post-sign-in destination", () => {
     expect(await screen.findByText("LANDED_GALLERY")).toBeInTheDocument();
   });
 
-  it("a first-run workspace (no sources) is routed to /discover", async () => {
+  it("a first-run workspace (no sources) is routed into the funnel", async () => {
     state.user = { id: "u1" };
     renderLogin();
-    expect(await screen.findByText("LANDED_DISCOVER")).toBeInTheDocument();
+    expect(await screen.findByText("LANDED_ONBOARDING")).toBeInTheDocument();
   });
 
   it("a workspace that already tracks sources lands on /account", async () => {
