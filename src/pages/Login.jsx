@@ -123,9 +123,13 @@ function FirstRunGate({ next }) {
     );
   }
   // Signed in but no workspace yet -> the funnel creates one at the end.
-  if (!activeWorkspaceId) return <Navigate to="/onboarding" replace />;
+  // Propagate a non-default ?next so the original intent survives the
+  // funnel: someone who bounced off /sources lands back on /sources —
+  // tags tracked, scrapes running — instead of a generic destination.
+  const funnelPath = next && next !== "/account" ? `/onboarding?next=${encodeURIComponent(next)}` : "/onboarding";
+  if (!activeWorkspaceId) return <Navigate to={funnelPath} replace />;
   // A failed sources fetch must never trap someone in onboarding — send them
   // where they were headed and let the destination page surface the error.
   if (sourcesQuery.isError) return <Navigate to={next} replace />;
-  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? next : "/onboarding"} />;
+  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? next : funnelPath} />;
 }

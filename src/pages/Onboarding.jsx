@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { T, fD, fB, fM, fmt } from "../lib/theme.js";
+import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, Spinner } from "../components/ui.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
@@ -19,9 +19,9 @@ const STORAGE_KEY = "slashloop:onboarding";
 const MAX_TRACKED = 3; // free allowance territory — the backend enforces limits too
 
 const TRAPS = [
-  ["The scroll trap", "You “research” TikTok for 2 hours, save 14 videos, and remember none of them on filming day."],
-  ["The views mirage", "You copy what mega-creators post. It works for them because 2M people already follow them — not because the concept is good."],
-  ["The blank page", "Your changelog is full. Your content calendar is a graveyard of “post something today?” reminders."],
+  ["The scroll trap", "Two hours of “research”. 14 saved videos. 0 posts."],
+  ["The views mirage", "What works for a 2M-follower creator works because of the 2M followers — not the concept."],
+  ["The blank page", "“Post something today?” is not a content strategy."],
 ];
 
 const STUCK_OPTIONS = [
@@ -32,10 +32,10 @@ const STUCK_OPTIONS = [
 ];
 
 const STUCK_PAYOFF = {
-  ideas: "You'll open a ranked feed of proven concepts in your niche — no more staring at a blank calendar.",
-  views: "We'll surface formats that over-performed for creators your size — not mega-account noise you could never replicate.",
-  installs: "Hooks that stop the scroll are what turn watchers into installs — every outlier comes with its hook extracted.",
-  time: "The whole loop runs overnight through MCP while you sleep — you wake up to ranked outliers, not a research queue.",
+  ideas: "A ranked feed of proven concepts beats a blank calendar.",
+  views: "Formats that over-performed for accounts your size — not mega-account noise.",
+  installs: "Every outlier ships with its hook extracted — the scroll-stopper that drives installs.",
+  time: "The loop runs overnight through MCP. You wake up to ranked outliers.",
 };
 
 function parseNiche(text) {
@@ -96,6 +96,12 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState(loadAnswers); // lazy init: resume mid-funnel after a refresh
   const [running, setRunning] = useState(false);
+  // One-way latch: once setup has started, the completion guard below must
+  // never fire again. It otherwise races the post-setup navigate() — router
+  // transitions commit after urgent state updates, so the `finally`
+  // setRunning(false) would re-render first, see the just-tracked sources,
+  // and hijack the user to /account before the intended page lands.
+  const [setupStarted, setSetupStarted] = useState(false);
 
   useEffect(() => {
     saveAnswers(answers);
@@ -121,11 +127,13 @@ export default function Onboarding() {
     return <Navigate to={`/login?next=${encodeURIComponent(back)}`} replace />;
   }
   // Already tracking something -> onboarding did its job some other day.
-  if (activeWorkspaceId && sourcesQuery.isSuccess && (sourcesQuery.data ?? []).length > 0) {
+  // setupStarted keeps this from firing during/after THIS session's setup.
+  if (!setupStarted && activeWorkspaceId && sourcesQuery.isSuccess && (sourcesQuery.data ?? []).length > 0) {
     return <Navigate to={next || "/account"} replace />;
   }
 
   async function runSetup() {
+    setSetupStarted(true);
     setRunning(true);
     const items = parseNiche(answers.niche ?? "").slice(0, MAX_TRACKED);
     try {
@@ -160,9 +168,11 @@ export default function Onboarding() {
       if (tracked > 0) queryClient.invalidateQueries({ queryKey: ["sources", wsId] });
       track("onboarding_complete", { sources: tracked });
       clearAnswers();
-      // With sources queued the Gallery is the payoff screen; with none,
-      // Discover is where picking them happens.
-      navigate(next || (tracked > 0 ? "/gallery" : "/discover"));
+      // Land where the proof is: tags tracked (with scrape status) on
+      // Sources; outliers need scrape time, so the Gallery right after
+      // setup would greet them with an empty grid. With nothing tracked,
+      // Discover is where picking happens. An explicit ?next always wins.
+      navigate(next || (tracked > 0 ? "/sources" : "/discover"));
     } finally {
       setRunning(false);
     }
@@ -228,10 +238,40 @@ function ProblemScreen({ onNext }) {
         ))}
       </div>
       <div className="mt-7 flex items-center gap-4">
-        <CTAButton big onClick={onNext}>That's me — fix it →</CTAButton>
+        <CTAButton big onClick={onNext}>That's me →</CTAButton>
         <span style={{ ...fM, fontSize: 11, color: T.muted }}>takes ~30 seconds</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * A real product screenshot with a browser-chrome frame — proof beats
+ * promises in a funnel. Hides itself until the file loads so a missing
+ * image never shows a broken-image icon.
+ */
+function Shot({ src, caption, maxHeight = 280 }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <figure className="mt-6 mb-0">
+      <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(20,24,29,0.14)" }}>
+        <div className="flex items-center gap-1.5 px-3 py-2" style={{ background: T.ink, borderBottom: `1px solid ${T.line}` }}>
+          {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
+            <span key={c} className="w-2 h-2 rounded-full" style={{ background: c }} />
+          ))}
+          <span className="ml-2 truncate" style={{ ...fM, fontSize: 10, color: "#7A828B" }}>slashloop.app{src.replace("/screens", "").replace(".jpg", "")}</span>
+        </div>
+        <img
+          src={src}
+          alt={caption}
+          onError={() => setOk(false)}
+          className="block w-full"
+          style={{ maxHeight, objectFit: "cover", objectPosition: "top", background: T.paper }}
+        />
+      </div>
+      <figcaption className="mt-2" style={{ ...fM, fontSize: 11, color: T.muted }}>{caption}</figcaption>
+    </figure>
   );
 }
 
@@ -241,37 +281,15 @@ function SolutionScreen({ onNext }) {
       <h1 className="mt-6" style={{ ...fD, fontWeight: 900, fontSize: "clamp(26px,4vw,36px)", lineHeight: 1.1, letterSpacing: -0.8 }}>
         Views lie. <span style={{ color: T.signal }}>Multipliers don't.</span>
       </h1>
-      <p className="mt-5 mb-0" style={{ fontSize: 16, lineHeight: 1.65, color: "#3A424B" }}>
-        A 1.2M-view video from a 2M-follower account is a Tuesday. A 310K-view video from a 4K-follower account is a{" "}
-        <b>proven concept</b> — the algorithm pushed it on merit, not audience. slashloop scores every video in your
-        niche against that creator's own baseline, so breakouts from small accounts surface instead of drowning under
-        big-account noise. Those are the concepts <i>you</i> can replicate with 0 followers.
+      <p className="mt-4 mb-0" style={{ fontSize: 15.5, lineHeight: 1.6, color: "#3A424B" }}>
+        A 310K-view video from a 4K-follower account is a <b>proven concept</b> — the algorithm pushed it on merit.
+        1.2M views from a 2M account is just a Tuesday. slashloop scores every video in your niche against the
+        creator's own baseline, so concepts you can replicate <i>at 0 followers</i> rise to the top.
       </p>
-      <div className="mt-6 rounded-xl p-5" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-        {[
-          { label: "@techguru · 2.1M followers", views: 1200000, base: 900000, score: "1.3x", hot: false },
-          { label: "@solodev_sam · 4.2K followers", views: 310000, base: 11300, score: "27.4x", hot: true },
-        ].map((r) => (
-          <div key={r.label} className="py-3" style={{ borderBottom: `1px solid ${T.line}` }}>
-            <div className="flex items-center justify-between">
-              <span style={{ ...fB, fontSize: 13, fontWeight: 600 }}>{r.label}</span>
-              <span className="rounded px-2 py-0.5" style={{ ...fM, fontSize: 13, fontWeight: 600, background: r.hot ? T.signal : "transparent", color: r.hot ? "#fff" : T.muted, border: r.hot ? "none" : `1px solid ${T.line}` }}>
-                {r.score}
-              </span>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span style={{ ...fM, fontSize: 9, color: T.muted, width: 60 }}>baseline</span>
-              <div className="h-1.5 rounded-full" style={{ width: `${(r.base / 1200000) * 100 * 0.7 + 2}%`, background: "#C9CCC5" }} />
-              <span style={{ ...fM, fontSize: 9, color: T.muted }}>{fmt(r.base)}</span>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <span style={{ ...fM, fontSize: 9, color: r.hot ? T.signal : T.ink, width: 60 }}>this video</span>
-              <div className="h-1.5 rounded-full" style={{ width: `${(r.views / 1200000) * 100 * 0.7 + 2}%`, background: r.hot ? T.signal : T.ink }} />
-              <span style={{ ...fM, fontSize: 9 }}>{fmt(r.views)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <Shot
+        src="/screens/gallery.png"
+        caption="the real feed — every card scored vs its creator's baseline"
+      />
       <div className="mt-7">
         <CTAButton big onClick={onNext}>Set up my loop →</CTAButton>
       </div>
@@ -301,7 +319,7 @@ function ProductQuestion({ value, onChange, onNext, onBack }) {
     <QuestionShell
       kicker="QUESTION 1 OF 3"
       title="What are we shipping?"
-      help="Your app or product — it names your first workspace."
+      help="Names your workspace — that's all."
       onNext={onNext}
       onBack={onBack}
       nextLabel={value.trim() ? `Set up ${value.trim()} →` : "Next →"}
@@ -328,7 +346,7 @@ function NicheQuestion({ value, onChange, onNext, onBack }) {
     <QuestionShell
       kicker="QUESTION 2 OF 3"
       title="Who's already winning in your niche?"
-      help={`Keywords, #hashtags or @competitor handles — we'll track up to ${MAX_TRACKED} now and queue their first scrapes.`}
+      help={`Keywords, #hashtags or @handles — we track up to ${MAX_TRACKED} now and queue their first scrapes.`}
       onNext={onNext}
       onBack={onBack}
       nextLabel="Track them →"
@@ -343,6 +361,7 @@ function NicheQuestion({ value, onChange, onNext, onBack }) {
         style={{ ...inputStyle, resize: "vertical" }}
         data-testid="onboarding-niche-input"
       />
+      <Shot src="/screens/discover.png" caption="type your niche — slashloop finds and verifies the sources" maxHeight={180} />
       {items.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {items.map((item) => {
@@ -399,19 +418,19 @@ function SetupScreen({ answers, hasWorkspace, running, onRun, onBack }) {
   const payoff = STUCK_PAYOFF[answers.stuck] ?? "Your feed starts filling within minutes of the first scrape.";
   return (
     <div data-testid="onboarding-setup">
-      <div className="mt-6" style={{ ...fM, fontSize: 12, color: T.muted }}>ALL SET UP FOR YOU</div>
+      <div className="mt-6" style={{ ...fM, fontSize: 12, color: T.muted }}>YOUR SETUP</div>
       <h1 className="mt-2" style={{ ...fD, fontWeight: 900, fontSize: "clamp(24px,3.5vw,32px)", letterSpacing: -0.8 }}>
-        Your /loop is ten seconds away.
+        Your /loop is 10 seconds away.
       </h1>
       <div className="mt-5 rounded-xl p-5 flex flex-col gap-3" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-        <SummaryRow ok label={hasWorkspace ? "Workspace: using yours" : `Workspace: "${(answers.product ?? "").trim() || "My niche"}" created`} />
+        <SummaryRow ok label={hasWorkspace ? "Using your existing workspace" : `Workspace "${(answers.product ?? "").trim() || "My niche"}" — created`} />
         <SummaryRow
           ok={items.length > 0}
           label={items.length > 0
             ? `${items.length} source${items.length > 1 ? "s" : ""} tracked — first scrapes queued`
-            : "No sources yet — we'll start you on Discover to pick some"}
+            : "No sources yet — pick some on Discover"}
         />
-        <SummaryRow ok label="Ranked feed, scored against each creator's own baseline" />
+        <SummaryRow ok label="Feed ranked against each creator's own baseline" />
       </div>
       <p className="mt-4 mb-0" style={{ fontSize: 14, lineHeight: 1.6, color: "#3A424B" }}>{payoff}</p>
       <p className="mt-2 mb-0" style={{ ...fM, fontSize: 11, color: T.muted }}>

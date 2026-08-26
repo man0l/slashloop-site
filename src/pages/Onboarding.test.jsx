@@ -52,6 +52,7 @@ function renderOnboarding(initial = "/onboarding") {
           <Route path="/login" element={<div>LANDED_LOGIN</div>} />
           <Route path="/account" element={<div>LANDED_ACCOUNT</div>} />
           <Route path="/discover" element={<div>LANDED_DISCOVER</div>} />
+          <Route path="/sources" element={<div>LANDED_SOURCES</div>} />
           <Route path="/gallery" element={<div>LANDED_GALLERY</div>} />
         </Routes>
       </MemoryRouter>
@@ -116,9 +117,27 @@ describe("Onboarding funnel", () => {
       platform: "tiktok", sourceType: "creator", query: "coldplungequeen", videoLimit: 20,
     });
     await waitFor(() => expect(refreshSource).toHaveBeenCalledTimes(3));
-    // Sources queued -> the Gallery is the payoff screen.
-    expect(await screen.findByText("LANDED_GALLERY")).toBeInTheDocument();
+    // Tags tracked -> Sources shows them (scrape status included); the
+    // Gallery would be an empty grid until the first scrape lands.
+    expect(await screen.findByText("LANDED_SOURCES")).toBeInTheDocument();
     expect(localStorage.getItem("slashloop:onboarding")).toBeNull();
+  });
+
+  it("mid-setup, the sources query waking up never bounces the user to /account", async () => {
+    // Reproduces the production race: the workspace created mid-setup
+    // enables the sources query, which sees the tracked sources and would
+    // fire the "already onboarded" guard before runSetup navigates.
+    createWorkspace.mockImplementation(async (name) => {
+      state.activeWorkspaceId = "ws-new";
+      listSources.mockResolvedValue([{ id: "s0", sourceType: "keyword", query: "x" }]);
+      return { id: "ws-new", name };
+    });
+    renderOnboarding();
+    await clickThroughToSetup();
+    fireEvent.click(screen.getByRole("button", { name: /enter the \/loop/i }));
+
+    expect(await screen.findByText("LANDED_SOURCES")).toBeInTheDocument();
+    expect(screen.queryByText("LANDED_ACCOUNT")).not.toBeInTheDocument();
   });
 
   it("reuses the existing workspace instead of creating one", async () => {
@@ -154,7 +173,7 @@ describe("Onboarding funnel", () => {
     fireEvent.click(screen.getByRole("button", { name: /enter the \/loop/i }));
 
     await waitFor(() => expect(createSource).toHaveBeenCalledTimes(3));
-    expect(await screen.findByText("LANDED_GALLERY")).toBeInTheDocument();
+    expect(await screen.findByText("LANDED_SOURCES")).toBeInTheDocument();
   });
 
   it("skip hands off to Discover", () => {
