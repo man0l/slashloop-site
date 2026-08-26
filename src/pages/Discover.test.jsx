@@ -20,9 +20,10 @@ vi.mock("../components/WorkspaceSwitcher.jsx", () => ({ default: () => <div /> }
 const createSource = vi.fn();
 const refreshSource = vi.fn();
 const dismissSuggestedSource = vi.fn();
+const listSources = vi.fn(async () => [{ id: "s0", sourceType: "keyword", query: "already tracked" }]);
 vi.mock("../lib/sources.js", () => ({
   SourcesApiError: class extends Error {},
-  listSources: vi.fn(async () => [{ id: "s0", sourceType: "keyword", query: "already tracked" }]),
+  listSources: (...a) => listSources(...a),
   createSource: (...a) => createSource(...a),
   refreshSource: (...a) => refreshSource(...a),
   dismissSuggestedSource: (...a) => dismissSuggestedSource(...a),
@@ -40,7 +41,7 @@ import Discover from "./Discover.jsx";
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <Discover />
@@ -95,6 +96,23 @@ describe("Discover page flow", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /track this/i })[0]);
     await waitFor(() => expect(createSource).toHaveBeenCalled());
     await waitFor(() => expect(refreshSource).toHaveBeenCalled());
+
+    // Tracking anything hands the session over to the Gallery — that's where
+    // the outliers land once the first scrape lands.
+    expect(await screen.findByTestId("feed-populating")).toBeTruthy();
+    expect(screen.getByTestId("open-gallery-cta").getAttribute("href")).toBe("/gallery");
+  });
+
+  it("shows the start-here strip only while the workspace tracks nothing", async () => {
+    listSources.mockResolvedValue([]);
+    const first = renderPage();
+    expect(await screen.findByTestId("first-run-steps")).toBeTruthy();
+    first.unmount();
+
+    // A workspace that already tracks something skips the tutorial strip.
+    listSources.mockResolvedValue([{ id: "s0", sourceType: "keyword", query: "x" }]);
+    renderPage();
+    await waitFor(() => expect(screen.queryByTestId("first-run-steps")).not.toBeInTheDocument());
   });
 
   it("survives an unverified probe and a rejected one", async () => {

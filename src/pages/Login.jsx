@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB } from "../lib/theme.js";
-import { SectionLabel } from "../components/ui.jsx";
+import { SectionLabel, Spinner } from "../components/ui.jsx";
 import { useAuth } from "../lib/auth.jsx";
+import { useWorkspace } from "../lib/workspace.jsx";
+import { listSources } from "../lib/sources.js";
 
 export default function Login() {
   const { user, signInWithOAuth } = useAuth();
@@ -12,7 +15,12 @@ export default function Login() {
   const [status, setStatus] = useState("idle"); // idle | loading | error
   const [error, setError] = useState("");
 
-  if (user) return <Navigate to={next} replace />;
+  if (user && next !== "/account") return <Navigate to={next} replace />;
+  // An explicit ?next means the user was trying to reach something specific —
+  // honor it above. The DEFAULT destination ("/account", including its
+  // round-trip through the OAuth redirect) is where first-run routing kicks
+  // in: an account that tracks nothing yet activates better on /discover.
+  if (user) return <FirstRunGate />;
 
   async function oauth(provider) {
     setStatus("loading");
@@ -69,4 +77,36 @@ export default function Login() {
       )}
     </section>
   );
+}
+
+/**
+ * Default-destination routing: send brand-new workspaces to /discover (their
+ * niche isn't tracked yet — activation IS seeing a first outlier), everyone
+ * else on to /account as before. Shares the ["sources", workspaceId] cache
+ * with the Sources/Discover pages, so this costs no extra fetch right after
+ * tracking something.
+ */
+function FirstRunGate() {
+  const { accessToken } = useAuth();
+  const { activeWorkspaceId, loading: workspaceLoading } = useWorkspace();
+
+  const sourcesQuery = useQuery({
+    queryKey: ["sources", activeWorkspaceId],
+    queryFn: ({ signal }) => listSources(accessToken, activeWorkspaceId, {}, signal),
+    enabled: Boolean(accessToken && activeWorkspaceId),
+  });
+
+  // Auth or workspace still resolving -> wait here.
+  if (!accessToken || workspaceLoading || (Boolean(activeWorkspaceId) && sourcesQuery.isPending)) {
+    return (
+      <section className="flex items-center justify-center py-24" role="status" aria-label="Preparing your workspace">
+        <Spinner />
+      </section>
+    );
+  }
+  // Signed in but no workspace yet -> /discover renders its own
+  // "create a workspace above first" state.
+  if (!activeWorkspaceId) return <Navigate to="/discover" replace />;
+  if (sourcesQuery.isError) return <Navigate to="/account" replace />;
+  return <Navigate replace to={(sourcesQuery.data ?? []).length > 0 ? "/account" : "/discover"} />;
 }

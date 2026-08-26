@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, IconButton, CloseIcon, Skeleton } from "../components/ui.jsx";
@@ -370,6 +370,17 @@ export default function Discover() {
       </div>
 
       <form onSubmit={runDiscover} className="mt-8 rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
+        {/* First-run strip — the wizard collapsed to one sentence per step,
+            taught by doing instead of a modal tour. Only for workspaces that
+            track nothing and haven't searched yet. */}
+        {status === "idle" && sourcesQuery.isSuccess && (sourcesQuery.data ?? []).length === 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg px-3 py-2.5" style={{ background: "#F9F7FF", border: `1px dashed #7C5CFF` }} data-testid="first-run-steps">
+            <span style={{ ...fB, fontSize: 12, fontWeight: 700, color: "#7C5CFF" }}>Start here</span>
+            <span style={{ ...fB, fontSize: 12, color: T.ink }}>① Describe your niche below</span>
+            <span style={{ ...fB, fontSize: 12, color: T.ink }}>② Track 2–3 of the suggestions — your free allowance</span>
+            <span style={{ ...fB, fontSize: 12, color: T.ink }}>③ Watch your outliers land in the Gallery</span>
+          </div>
+        )}
         <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>DESCRIBE YOUR NICHE</div>
         {activeWorkspaceId ? (
           <>
@@ -426,6 +437,28 @@ export default function Discover() {
 
       {(status === "probing" || status === "done") && (
         <div className="mt-8 flex flex-col gap-8">
+          {/* The activation loop's exit: something tracked -> the feed is
+              filling and the Gallery is where the outliers land. Shown for
+              the rest of the session once the first track happens. */}
+          {trackedHere.size > 0 && (
+            <div
+              className="flex flex-col gap-3 rounded-lg px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              style={{ background: "#FFF8EF", border: `1px solid ${T.line}` }}
+              data-testid="feed-populating"
+            >
+              <p style={{ ...fB, fontSize: 13, color: T.ink, margin: 0 }}>
+                Your feed is populating — outliers usually land within minutes of the first scrape.
+              </p>
+              <Link
+                to="/gallery"
+                className="shrink-0 rounded-md px-3 py-1.5 font-semibold text-center transition-transform hover:-translate-y-0.5"
+                style={{ ...fB, fontSize: 12.5, background: T.signal, color: "#fff" }}
+                data-testid="open-gallery-cta"
+              >
+                Open the Gallery →
+              </Link>
+            </div>
+          )}
           {!anySuggestions && status === "done" && (
             <p style={{ ...fB, fontSize: 13, color: T.muted }}>
               Nothing trackable found — every seed came back empty. Try broader or different terms.
