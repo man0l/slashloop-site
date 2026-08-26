@@ -1,6 +1,7 @@
 # slashloop — Research Findings & Draft Product Plan
 
-_Drafted 2026-08-21 · revised 2026-08-21 — scraping stays **in-house** (own proxies +
+_Drafted 2026-08-21 · revised 2026-08-25 — Phase 0 rewritten against shipped reality
+(hook tests v1 live, digest live); scraping stays **in-house** (own proxies +
 workers); ScrapeCreators demoted to pattern donor · status: DRAFT · owner: @man0l_
 
 Audience (locked): **app builders learning short-form video** — not pro creators.
@@ -119,40 +120,54 @@ in order of how fast they accumulate:
 
 ## 4. Roadmap draft
 
-### Phase 0 — Quick wins
+### Phase 0 — Quick wins _(rewritten 2026-08-25 against what actually shipped)_
 
-**0.1 Onboarding wizard — "first outlier in <2 min"** _(site repo)_
-- Step 1: app name/store link + category chips (AI · productivity · devtools ·
-  games · health …).
-- Step 2: 2–3 suggested sources from **static curated lists per category** (V1 = a
-  constants file; swap to the existing discover-search later). User can swap any
-  before starting.
-- Step 3: track them — this *is* the free tier's 2-source allowance, chosen well —
-  then redirect to the Gallery while the feed populates.
-- Why: activation = seeing a 27x outlier in *your* niche within one session, and it
-  teaches the "source" concept by doing instead of explaining.
+Status of the original four: **0.3 digest SHIPPED** (Resend, one email per owner,
+R2 thumbs, app-only deep links into a filtered Gallery, `/settings/email`).
+**"Film this today" (old 0.2) is dead** — superseded by AI hook tests (feature #7 in
+the main repo's plan; v1 shipped 2026-08-24 on MCP + site). Language lock that killed
+it: the output is AI-generated, *nothing gets filmed by default* — tests / openings /
+versions, never "remakes"; render is the destination and the free shot list is the
+fallback for people who'd rather film it themselves. What remains:
 
-**0.2 "Film this today" CTA on every Gallery card** _(site repo)_
-- Primary button on each card: `[ Film this today → ]`; analyze/re-analyze/open
-  become secondary.
-- Tap: brief exists → open it. Else show cost (2 credits) → generate → open: hook
-  rewritten for *their* app + beat-by-beat shots, ready to shoot tonight.
-- Why: the card should answer the filmmaker's question ("what do I film today"),
-  not the researcher's ("what over-performed?"). Collapses outlier → script to one tap.
+**0.1 First-run activation — first outlier in <2 min** _(site repo)_ — SHIPPED 2026-08-26
+- Post-login default destination is now routed: a workspace tracking nothing
+  lands on `/discover` (with a "Start here" 3-step strip); anyone else gets
+  /account as before; explicit ?next always wins.
+- Tracking any suggestion surfaces a "feed populating — open the Gallery" CTA,
+  completing describe-niche → track → gallery inside one session.
 
-**0.3 Weekly outlier digest email** _(main repo)_
-- Cron + Resend/Postmark over data refreshes already compute. Email: "3 breakouts in
-  your niche this week" — score, hook line, thumbnail, deep link to the card (CTA
-  waiting there).
-- **Free tier included** — it's the retention engine, not a paid feature. Pro Alerts
-  stay real-time; digest = weekly "the loop is still running." Different jobs.
+**0.2 Hook-test surface completion** _(replaces "Film this today")_
 
-**0.4 Agent distribution kit** _(llms.txt → site repo; spec + skill → main repo)_
-- Build §2.4: llms.txt at the site root, OpenAPI spec, Claude Code skill.
+Already shipped with v1 (no work left): card entry points (`[🧪 Test hooks on this
+video · 2cr]` primary CTA on analyzed-untested cards; 🧪 badge chip opens the panel),
+cost-before-click for everything that exists (start/re-roll quote 2cr before the
+click; shot list free), reroll-obeying lock, `/tests` manager.
+
+- [x] **Version-level verdict stub** — closing as Won names *which opening*
+      won ("C won"). Shipped 2026-08-26 across both repos: `winnerLabel`
+      column (+ `supabase/migrations/20260826090000_hook_test_winner_label.sql`,
+      must be applied), `close { outcome:'won', winner }` on REST and MCP,
+      archived tests stay viewable behind their badge, WonDialog picks among
+      picked openings, badge/header/index all read "C won". Manual until
+      own-post auto-scoring (Phase 4).
+
+**0.3 Agent distribution kit** _(llms.txt → site repo; spec + skill → main repo)_
+- [x] `llms.txt` live at the site root (2026-08-26): what slashloop does, the
+      MCP endpoint, tool surface by job, credit costs, plans.
+- [ ] OpenAPI spec over the REST actions `/tests` already drives + a Claude
+      Code skill teaching the tools — main repo, still open.
+
+#### Shipped beyond this plan (2026-08-21 → 08-25)
+Studio read-only view (post log, weekly retro, sounds, competitor watchlist) ·
+own-account tracking with You badge (pulls a Phase 1 item forward) ·
+`generate_script` + idea queue · provider-aware cost blocks on money-spending
+responses · R2 media storage (thumbs/slideshows off TikTok CDN) · GA4 with SPA
+pageviews · TanStack Query migration.
 
 ### Phase 1 — Own-account tracking + smart refresh (moat starts)
-- [ ] Track own account as a source → personal baseline, "your video vs the outlier
-      it came from."
+- [x] Track own account as a source → personal baseline, "your video vs the outlier
+      it came from." _(shipped early, 2026-08: isSelf flag, You badge)_
 - [ ] Delta-based refresh + shared cache; charge on miss only (§2.1).
 - [ ] Booster PAYG packs (§2.2).
 
@@ -200,7 +215,6 @@ in order of how fast they accumulate:
 - Does scheduled-refresh-as-subscriber-perk hold up once agents are the main users?
 - Who curates the per-category starter source lists (Phase 0.1), and what's the
   refresh cadence before they go stale?
-
 ## Positioning line
 > **Your niche's proven outliers, rendered into app videos while you sleep.**
 > Research depth upstream (baselines nobody else computes) · preset formats midstream
