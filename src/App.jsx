@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { T, fD, fM, FONTS } from "./lib/theme.js";
 import { CTAButton, GhostButton, Spinner } from "./components/ui.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -53,13 +53,23 @@ const MenuIcon = ({ open }) => (
 );
 
 function Nav() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
   // A route change (following a link, or the "next" redirect after sign-in)
   // means the menu's job is done — leaving it open would cover the new page.
   useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  // Land on the marketing home deterministically — a signed-out user left on
+  // an app page (e.g. /sources) would just bounce to /login from that page's
+  // own guard.
+  async function handleSignOut() {
+    setMenuOpen(false);
+    await signOut();
+    navigate("/");
+  }
 
   const loggedInLinks = (
     <>
@@ -91,6 +101,13 @@ function Nav() {
             <>
               {loggedInLinks}
               <CTAButton to="/account">Account</CTAButton>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                style={{ ...fM, fontSize: 13, color: T.muted }}
+              >
+                Sign out
+              </button>
             </>
           ) : (
             <>
@@ -121,6 +138,14 @@ function Nav() {
             <>
               {loggedInLinks}
               <Link to="/account" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Account</Link>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="text-left"
+                style={{ ...fM, fontSize: 14, color: T.muted }}
+              >
+                Sign out
+              </button>
             </>
           ) : (
             <>
