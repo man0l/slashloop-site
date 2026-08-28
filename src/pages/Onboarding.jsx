@@ -84,6 +84,11 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next") || "";
+  // Explicit re-run: /onboarding?again skips the "already tracking something"
+  // guard so an onboarded account can walk the funnel again against its real
+  // workspace (setup then tracks into what exists instead of bouncing to
+  // /account). Nothing is deleted — re-entering the same niche just re-tracks.
+  const again = params.has("again");
   usePreloadShots();
 
   // Same key the Sources/Discover/Login pages use, so the "already done?"
@@ -122,14 +127,17 @@ export default function Onboarding() {
       </section>
     );
   }
-  // Not signed in -> login first, come straight back here.
+  // Not signed in -> login first, come straight back here (keeping ?next and
+  // ?again so the round-trip doesn't downgrade the request).
   if (!user) {
-    const back = next ? `/onboarding?next=${encodeURIComponent(next)}` : "/onboarding";
+    const qs = new URLSearchParams(params).toString();
+    const back = qs ? `/onboarding?${qs}` : "/onboarding";
     return <Navigate to={`/login?next=${encodeURIComponent(back)}`} replace />;
   }
   // Already tracking something -> onboarding did its job some other day.
-  // setupStarted keeps this from firing during/after THIS session's setup.
-  if (!setupStarted && activeWorkspaceId && sourcesQuery.isSuccess && (sourcesQuery.data ?? []).length > 0) {
+  // setupStarted keeps this from firing during/after THIS session's setup;
+  // ?again is the deliberate override.
+  if (!again && !setupStarted && activeWorkspaceId && sourcesQuery.isSuccess && (sourcesQuery.data ?? []).length > 0) {
     return <Navigate to={next || "/account"} replace />;
   }
 

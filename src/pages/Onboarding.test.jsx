@@ -196,6 +196,21 @@ describe("Onboarding funnel", () => {
     expect(await screen.findByText("LANDED_ACCOUNT")).toBeInTheDocument();
   });
 
+  it("?again lets an onboarded account re-run the funnel against its workspace", async () => {
+    state.activeWorkspaceId = "ws-1";
+    listSources.mockResolvedValue([{ id: "s0", sourceType: "keyword", query: "x" }]);
+    renderOnboarding("/onboarding?again=1");
+    // The completion guard would have bounced to /account — the override
+    // shows the funnel, and setup tracks into the existing workspace.
+    await clickThroughToSetup();
+    fireEvent.click(screen.getByRole("button", { name: /enter the \/loop/i }));
+
+    await waitFor(() => expect(createSource).toHaveBeenCalledTimes(3));
+    expect(createWorkspace).not.toHaveBeenCalled();
+    expect(createSource).toHaveBeenCalledWith("tok-1", "ws-1", expect.objectContaining({ query: "home sauna" }));
+    expect(await screen.findByText("LANDED_SOURCES")).toBeInTheDocument();
+  });
+
   it("answers survive a mid-funnel refresh", () => {
     localStorage.setItem("slashloop:onboarding", JSON.stringify({ product: "Sauna Tracker", niche: "#saunatok" }));
     renderOnboarding();
