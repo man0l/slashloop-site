@@ -169,7 +169,7 @@ function Footer() {
           <span className="w-5 h-5 rounded flex items-center justify-center" style={{ background: T.signal }}>
             <span style={{ ...fM, fontSize: 12, fontWeight: 600, color: "#fff" }}>/</span>
           </span>
-          <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.app — /loop for marketing</span>
+          <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev — /loop for marketing</span>
         </div>
         <span style={{ ...fM, fontSize: 11, color: "#5D656E" }}>© 2026 · made with Claude Code, naturally</span>
       </footer>

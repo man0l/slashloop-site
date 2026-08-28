@@ -19,14 +19,14 @@ account and the same credit balance.
 - [MCP server](https://mcp.slashloop.dev/mcp): add `https://mcp.slashloop.dev/mcp`
   as a custom connector (Claude Desktop, Cowork, claude.ai) or point any MCP
   client at it. First call opens a sign-in + consent flow.
-- [Web app](https://slashloop.app): sign in at
-  [login](https://slashloop.app/login). Key surfaces:
-  [Discover](https://slashloop.app/discover) (keyword-driven source ideas),
-  [Sources](https://slashloop.app/sources),
-  [Gallery](https://slashloop.app/gallery) (scored outliers),
-  [Hook tests](https://slashloop.app/tests),
-  [Studio](https://slashloop.app/studio) (post log, weekly retro),
-  [Account](https://slashloop.app/account).
+- [Web app](https://slashloop.dev): sign in at
+  [login](https://slashloop.dev/login). Key surfaces:
+  [Discover](https://slashloop.dev/discover) (keyword-driven source ideas),
+  [Sources](https://slashloop.dev/sources),
+  [Gallery](https://slashloop.dev/gallery) (scored outliers),
+  [Hook tests](https://slashloop.dev/tests),
+  [Studio](https://slashloop.dev/studio) (post log, weekly retro),
+  [Account](https://slashloop.dev/account).
 
 ## What the tools do
 
@@ -67,5 +67,5 @@ cost before it charges, and failed calls refund automatically.
   refresh, alerts, direct API access.
 - Pay-as-you-go credit top-ups from $10 — no subscription required.
 
-Checkout at [pricing](https://slashloop.app/pricing); balance, top-up and
-billing portal at [account](https://slashloop.app/account).
+Checkout at [pricing](https://slashloop.dev/pricing); balance, top-up and
+billing portal at [account](https://slashloop.dev/account).

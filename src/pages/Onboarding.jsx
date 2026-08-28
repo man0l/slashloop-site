@@ -269,7 +269,7 @@ function Shot({ src, caption, maxHeight = 280 }) {
           {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
             <span key={c} className="w-2 h-2 rounded-full" style={{ background: c }} />
           ))}
-          <span className="ml-2 truncate" style={{ ...fM, fontSize: 10, color: "#7A828B" }}>slashloop.app{src.replace("/screens/", "/").replace(/\.[a-z]+$/, "")}</span>
+          <span className="ml-2 truncate" style={{ ...fM, fontSize: 10, color: "#7A828B" }}>slashloop.dev{src.replace("/screens/", "/").replace(/\.[a-z]+$/, "")}</span>
         </div>
         {state === "loading" && (
           <div className="animate-pulse" style={{ height: maxHeight, background: "#E7E8E3" }} aria-hidden="true" />
