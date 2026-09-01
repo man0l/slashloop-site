@@ -48,3 +48,22 @@ export function parseRefreshFailures(errorsJson) {
   }
   return failureLines(parsed);
 }
+
+/**
+ * Last-refresh warning for a Sources-list row. The list payload now carries
+ * lastRefreshRun + lastRefreshJob so the page doesn't GET /sources?id= per row.
+ *
+ * A refusal (insufficient credits, Apify cap) never writes a RefreshRun —
+ * if the last refresh JOB failed more recently than the last RUN, that's
+ * the real story.
+ */
+export function refreshIssueFromSource(source) {
+  const run = source?.lastRefreshRun;
+  const job = source?.lastRefreshJob;
+  if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
+    return { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt };
+  }
+  if (!run) return null;
+  const errors = parseRefreshFailures(run.errorsJson);
+  return errors.length ? { errors, ranAt: run.ranAt } : null;
+}

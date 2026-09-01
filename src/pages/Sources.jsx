@@ -8,9 +8,8 @@ import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
-import { listSources, createSource, updateSource, deleteSource, refreshSource, getSource, suggestSources, verifySuggestedSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
-import { getGallery } from "../lib/gallery.js";
-import { parseRefreshFailures } from "../lib/refreshLog.js";
+import { listSources, createSource, updateSource, deleteSource, refreshSource, suggestSources, verifySuggestedSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
+import { refreshIssueFromSource } from "../lib/refreshLog.js";
 import { displayMediaUrl } from "../lib/mediaUrl.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
@@ -79,7 +78,6 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
       );
       refreshSource(accessToken, workspaceId, source.id)
         .then(() => {
-          queryClient.invalidateQueries({ queryKey: ["source-issue", workspaceId, source.id] });
           queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
         })
         .catch((refreshErr) => {
@@ -533,59 +531,15 @@ function EditVideoLimitDialog({ open, initialValue, busy, onCancel, onSave }) {
 }
 
 /**
- * Per-row supplemental data: the thumbnail of the source's biggest outlier
- * and its most recent refresh issue. Keyed per source id in TanStack Query,
- * so the desktop row and the mobile card (both always mounted) share one
- * fetch, and re-mounting the list after an action doesn't refetch rows
- * whose data is already fresh — the hand-rolled fetchedRowIds set this
- * replaces.
+ * Per-row thumb + last-refresh warning. Carried on GET /api/sources now —
+ * the page used to fire gallery-data?limit=1 and /sources?id= per row
+ * (N+1, ~2s each, and enough concurrent D1 queries to stall the Worker).
  */
-function useSourceRowData(accessToken, workspaceId, sourceId) {
-  const thumbQuery = useQuery({
-    queryKey: ["source-thumb", workspaceId, sourceId],
-    queryFn: async ({ signal }) => {
-      const r = await getGallery(accessToken, { workspaceId, sourceId, sortBy: "outlier_score", limit: 1 }, signal);
-      return r.cards?.[0]?.thumbUrl ?? null;
-    },
-    enabled: Boolean(accessToken && workspaceId && sourceId),
-    staleTime: 5 * 60_000,
-    retry: 1,
-  });
-
-  const issueQuery = useQuery({
-    queryKey: ["source-issue", workspaceId, sourceId],
-    queryFn: async ({ signal }) => {
-      const full = await getSource(accessToken, workspaceId, sourceId, signal);
-      const run = full.refreshRuns?.[0];
-      const job = full.lastRefreshJob;
-
-      // A refusal (insufficient credits, Apify cap breach) never reaches
-      // the point where a RefreshRun row gets written — so a source can
-      // fail every attempt and `refreshRuns` stays empty. If the last
-      // refresh JOB is a failure and it's more recent than the last
-      // refresh RUN (or there is no run at all), that refusal is the real
-      // story, not whatever the last successful run said.
-      if (job?.status === "failed" && (!run || new Date(job.createdAt) > new Date(run.ranAt))) {
-        return { errors: [job.lastError || "Refresh failed."], ranAt: job.createdAt };
-      }
-
-      if (!run) return null;
-      // errorsJson is the run's whole log, including bookkeeping the
-      // connector keeps for support ("Refresh policy: mode=incremental
-      // limit=5", "Already known: 1/3 results were existing videos").
-      // Only the failures belong in the UI — see src/lib/refreshLog.js.
-      const errors = parseRefreshFailures(run.errorsJson);
-      return errors.length ? { errors, ranAt: run.ranAt } : null;
-    },
-    enabled: Boolean(accessToken && workspaceId && sourceId),
-    staleTime: 60_000,
-    retry: 1,
-  });
-
+function useSourceRowData(source) {
   return {
-    thumbUrl: thumbQuery.data ?? null,
-    issue: issueQuery.data ?? null,
-    issueUnavailable: issueQuery.isError,
+    thumbUrl: source.thumbUrl ?? null,
+    issue: refreshIssueFromSource(source),
+    issueUnavailable: false,
   };
 }
 
@@ -607,8 +561,6 @@ function useSourceRowActions(source, accessToken, workspaceId) {
 
   function invalidateRow() {
     queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
-    queryClient.invalidateQueries({ queryKey: ["source-thumb", workspaceId, source.id] });
-    queryClient.invalidateQueries({ queryKey: ["source-issue", workspaceId, source.id] });
     queryClient.invalidateQueries({ queryKey: ["gallery", workspaceId] });
   }
 
@@ -693,8 +645,6 @@ function useSourceRowActions(source, accessToken, workspaceId) {
       setConfirmDelete(false);
       showToast(`Deleted ${source.query}.`, { type: "success" });
       queryClient.invalidateQueries({ queryKey: ["sources", workspaceId] });
-      queryClient.removeQueries({ queryKey: ["source-thumb", workspaceId, source.id] });
-      queryClient.removeQueries({ queryKey: ["source-issue", workspaceId, source.id] });
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't delete source.", { type: "error" });
     } finally {
@@ -786,7 +736,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
     saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
   } = useSourceRowActions(source, accessToken, workspaceId);
-  const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
+  const { thumbUrl, issue, issueUnavailable } = useSourceRowData(source);
 
   // Row navigates to this source's gallery; clicks on an action button/link
   // inside it must not also trigger that navigation.
@@ -869,7 +819,7 @@ function SourceCard({ source, accessToken, workspaceId }) {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
     saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
   } = useSourceRowActions(source, accessToken, workspaceId);
-  const { thumbUrl, issue, issueUnavailable } = useSourceRowData(accessToken, workspaceId, source.id);
+  const { thumbUrl, issue, issueUnavailable } = useSourceRowData(source);
 
   function openGallery(e) {
     if (e.target.closest("button, a")) return;

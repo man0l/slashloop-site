@@ -1,7 +1,7 @@
 // @vitest-environment node
 // Pure string classification — no DOM, so skip the jsdom environment.
 import { describe, expect, it } from "vitest";
-import { failureLines, isInfoNote, parseRefreshFailures } from "./refreshLog.js";
+import { failureLines, isInfoNote, parseRefreshFailures, refreshIssueFromSource } from "./refreshLog.js";
 
 describe("refresh log classification", () => {
   it("hides the run bookkeeping the connector tags as informational", () => {
@@ -44,5 +44,27 @@ describe("refresh log classification", () => {
     expect(parseRefreshFailures("not json")).toEqual([]);
     expect(failureLines(null)).toEqual([]);
     expect(isInfoNote(undefined)).toBe(false);
+  });
+});
+
+describe("refreshIssueFromSource", () => {
+  it("returns null when there is no run and no failed job", () => {
+    expect(refreshIssueFromSource({})).toBe(null);
+    expect(refreshIssueFromSource({ lastRefreshRun: { errorsJson: "[]", ranAt: "2026-01-01T00:00:00.000Z" } })).toBe(null);
+  });
+
+  it("surfaces a failed job when it is newer than the last run (or there is no run)", () => {
+    expect(refreshIssueFromSource({
+      lastRefreshJob: { status: "failed", lastError: "cap breached", createdAt: "2026-09-01T12:00:00.000Z" },
+    })).toEqual({ errors: ["cap breached"], ranAt: "2026-09-01T12:00:00.000Z" });
+  });
+
+  it("surfaces failure lines from the last run", () => {
+    expect(refreshIssueFromSource({
+      lastRefreshRun: {
+        errorsJson: JSON.stringify(["[info] Already known: 1", "Scoring failed"]),
+        ranAt: "2026-09-01T11:00:00.000Z",
+      },
+    })).toEqual({ errors: ["Scoring failed"], ranAt: "2026-09-01T11:00:00.000Z" });
   });
 });
