@@ -8,7 +8,7 @@ import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
 import { listSources, createSource, refreshSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
-import { discoverSeeds, mineDiscoverSeed } from "../lib/discover.js";
+import { discoverSeeds, mineDiscoverSeedUntilDone, DiscoverApiError } from "../lib/discover.js";
 
 const MAX_INPUTS = 8;
 
@@ -250,44 +250,41 @@ export default function Discover() {
         return;
       }
 
-      // One probe per seed, fired independently — each chip/card updates the
-      // moment its own scrape resolves instead of the page waiting on the
-      // slowest one (why the backend splits these into two endpoints at all).
+      // One probe at a time. The connector queues each scrape and returns
+      // immediately; we poll that job. Firing six POSTs at once used to
+      // wedge D1 (concurrent Prisma on one Worker isolate) so chips never
+      // resolved.
       setStatus("probing");
-      let pending = expanded.seeds.length;
-      const settle = () => {
-        if (--pending === 0) setStatus((s) => (s === "probing" ? "done" : s));
-      };
       for (const seed of expanded.seeds) {
-        mineDiscoverSeed(accessToken, activeWorkspaceId, seed)
-          .then((r) => {
-            setCredits((c) => ({ charged: c.charged + r.creditsCharged, remaining: r.creditsRemaining }));
-            setResults((prev) => ({
-              ...prev,
-              [normalize(seed.sourceType, seed.query)]: {
-                seed,
-                verified: r.verified,
-                sampleCount: r.sampleCount,
-                topViews: r.topViews,
-                hashtags: r.hashtags,
-                creators: r.creators,
-                error: !r.ok ? r.error : undefined,
-              },
-            }));
-          })
-          .catch((err) => {
-            setResults((prev) => ({
-              ...prev,
-              [normalize(seed.sourceType, seed.query)]: {
-                seed, verified: false, sampleCount: 0, topViews: 0, hashtags: [], creators: [],
-                error: err instanceof SourcesApiError ? err.message : "Probe failed.",
-              },
-            }));
-          })
-          .finally(settle);
+        try {
+          const r = await mineDiscoverSeedUntilDone(accessToken, activeWorkspaceId, seed);
+          setCredits((c) => ({ charged: c.charged + r.creditsCharged, remaining: r.creditsRemaining }));
+          setResults((prev) => ({
+            ...prev,
+            [normalize(seed.sourceType, seed.query)]: {
+              seed,
+              verified: r.verified,
+              sampleCount: r.sampleCount,
+              topViews: r.topViews,
+              hashtags: r.hashtags,
+              creators: r.creators,
+              sounds: r.sounds ?? [],
+              error: !r.ok ? r.error : undefined,
+            },
+          }));
+        } catch (err) {
+          setResults((prev) => ({
+            ...prev,
+            [normalize(seed.sourceType, seed.query)]: {
+              seed, verified: false, sampleCount: 0, topViews: 0, hashtags: [], creators: [], sounds: [],
+              error: err instanceof DiscoverApiError ? err.message : "Probe failed.",
+            },
+          }));
+        }
       }
+      setStatus((s) => (s === "probing" ? "done" : s));
     } catch (err) {
-      setErrorMsg(err instanceof SourcesApiError ? err.message : "Couldn't expand those keywords.");
+      setErrorMsg(err instanceof DiscoverApiError ? err.message : "Couldn't expand those keywords.");
       setStatus("error");
     }
   }

@@ -41,3 +41,33 @@ export function mineDiscoverSeed(accessToken, workspaceId, seed) {
     },
   });
 }
+
+/** GET /api/sources/discover/mine?workspaceId=&jobId= -> current mine result.
+ *  `pending: true` means the scraper is still on it. */
+export function pollDiscoverMine(accessToken, workspaceId, jobId) {
+  const params = new URLSearchParams({ workspaceId, jobId });
+  return apiFetch(`/api/sources/discover/mine?${params.toString()}`, { accessToken });
+}
+
+const MINE_POLL_MS = 1_500;
+const MINE_WAIT_MS = 90_000;
+
+/** POST the probe, then poll until the scraper finishes (or we give up).
+ *  The connector returns immediately with `{ pending, jobId }` so the
+ *  Cloudflare Worker never holds a 50s D1 poll. */
+export async function mineDiscoverSeedUntilDone(accessToken, workspaceId, seed) {
+  const first = await mineDiscoverSeed(accessToken, workspaceId, seed);
+  if (!first?.pending || !first.jobId) return first;
+  const deadline = Date.now() + MINE_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, MINE_POLL_MS));
+    const next = await pollDiscoverMine(accessToken, workspaceId, first.jobId);
+    if (!next?.pending) return next;
+  }
+  return {
+    ...first,
+    ok: false,
+    pending: false,
+    error: "Probe is still running on the scraper. Wait a moment and try again.",
+  };
+}
