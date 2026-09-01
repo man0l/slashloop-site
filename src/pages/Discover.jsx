@@ -222,7 +222,7 @@ export default function Discover() {
   const sourcesQuery = useQuery({
     queryKey: ["sources", activeWorkspaceId],
     queryFn: ({ signal }) => listSources(accessToken, activeWorkspaceId, {}, signal),
-    enabled: Boolean(accessToken && activeWorkspaceId),
+    enabled: Boolean(accessToken && activeWorkspaceId) && !workspaceLoading,
   });
   const trackedKeys = useMemo(() => {
     const keys = new Set(trackedHere);

@@ -35,6 +35,10 @@ export function WorkspaceProvider({ children }) {
     staleTime: 60_000,
   });
 
+  // Don't hand children a workspace id until the list has landed. Pages
+  // otherwise fire /api/sources in parallel with /api/workspaces; two Prisma
+  // calls on one Cloudflare isolate wedge D1 and Discover never starts.
+
   // Default to the oldest workspace (list is server-sorted createdAt asc)
   // unless the persisted id still refers to one the user owns.
   useEffect(() => {
@@ -68,10 +72,12 @@ export function WorkspaceProvider({ children }) {
     [accessToken, queryClient, setActiveWorkspaceId],
   );
 
+  const readyId = loading ? null : activeWorkspaceId;
+
   const value = {
     workspaces,
-    activeWorkspaceId,
-    activeWorkspace: workspaces.find((w) => w.id === activeWorkspaceId) ?? null,
+    activeWorkspaceId: readyId,
+    activeWorkspace: workspaces.find((w) => w.id === readyId) ?? null,
     setActiveWorkspaceId,
     loading,
     error: error ? (error instanceof WorkspacesApiError ? error.message : "Couldn't load workspaces.") : "",
