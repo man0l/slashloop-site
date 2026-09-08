@@ -36,9 +36,13 @@ export function getHookTestForVideo(accessToken, { workspaceId, videoId }, signa
 export function startHookTest(accessToken, { workspaceId, videoId, brandContext, insight }) {
   const context = brandContext?.trim();
   const override = insight?.trim();
+  // No timeout: a paid creation must survive unmount (no abort signal at
+  // all), and the server bounds the AI calls — an aborted create would leave
+  // unknown state (charged? created?) with no way to recover it client-side.
   return apiFetch(`${vid(videoId)}`, {
     method: "POST",
     accessToken,
+    timeoutMs: 0,
     body: { workspaceId, ...(context ? { brandContext: context } : {}), ...(override ? { insight: override } : {}) },
   });
 }
@@ -57,7 +61,8 @@ export function pickHookVersions(accessToken, { workspaceId, videoId, picks }) {
 }
 
 export function rerollHooks(accessToken, { workspaceId, videoId }) {
-  return apiFetch(`${vid(videoId)}/reroll`, { method: "POST", accessToken, body: { workspaceId } });
+  // No timeout, same rationale as startHookTest above (paid generation).
+  return apiFetch(`${vid(videoId)}/reroll`, { method: "POST", accessToken, timeoutMs: 0, body: { workspaceId } });
 }
 
 export function getShotlist(accessToken, { workspaceId, videoId }, signal) {
@@ -66,9 +71,11 @@ export function getShotlist(accessToken, { workspaceId, videoId }, signal) {
 }
 
 export function closeHookTest(accessToken, { workspaceId, videoId, outcome, winner }) {
+  // No timeout, same rationale as startHookTest above.
   return apiFetch(`${vid(videoId)}/close`, {
     method: "POST",
     accessToken,
+    timeoutMs: 0,
     body: { workspaceId, ...(outcome ? { outcome } : {}), ...(winner ? { winner } : {}) },
   });
 }
