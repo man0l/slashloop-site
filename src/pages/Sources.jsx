@@ -15,6 +15,24 @@ import { displayMediaUrl } from "../lib/mediaUrl.js";
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
 const SOURCE_TYPES = ["creator", "keyword", "hashtag", "collection"];
 
+/**
+ * Display label for a tracked source. Collections are stored as the full
+ * share URL once scraped (it carries the id future scrapes need) — render
+ * the human part (@owner/Name) instead of the raw URL or bare digits.
+ */
+function sourceLabel(source) {
+  if (source.sourceType !== "collection") return source.query;
+  const m = String(source.query).match(/@([^/?#]+)\/collection\/([^/?#]+?)(?:-\d+)?(?:[?#]|$)/);
+  if (m) {
+    try {
+      return `@${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}`;
+    } catch {
+      return `@${m[1]}/${m[2]}`;
+    }
+  }
+  return source.query;
+}
+
 function SourceThumb({ src }) {
   const [failed, setFailed] = useState(false);
   const boxStyle = { width: 36, height: 48, borderRadius: 6, background: "#E7E8E3", flexShrink: 0 };
@@ -757,7 +775,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
           <SourceThumb src={thumbUrl} />
           <div>
             <div className="flex items-center gap-2">
-              <span style={{ ...fB, fontSize: 14 }}>{source.query}</span>
+              <span style={{ ...fB, fontSize: 14 }}>{sourceLabel(source)}</span>
               {source.isSelf && (
                 <span className="rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>You</span>
               )}
@@ -836,7 +854,7 @@ function SourceCard({ source, accessToken, workspaceId }) {
         <SourceThumb src={thumbUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="truncate" style={{ ...fB, fontSize: 14 }}>{source.query}</span>
+            <span className="truncate" style={{ ...fB, fontSize: 14 }}>{sourceLabel(source)}</span>
             {source.isSelf && (
               <span className="shrink-0 rounded px-1.5 py-0.5" style={{ ...fM, fontSize: 10, fontWeight: 700, color: T.teal, background: "#EAF6F4" }}>You</span>
             )}
