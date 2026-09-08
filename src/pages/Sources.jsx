@@ -13,7 +13,7 @@ import { refreshIssueFromSource } from "../lib/refreshLog.js";
 import { displayMediaUrl } from "../lib/mediaUrl.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
-const SOURCE_TYPES = ["creator", "keyword", "hashtag"];
+const SOURCE_TYPES = ["creator", "keyword", "hashtag", "collection"];
 
 function SourceThumb({ src }) {
   const [failed, setFailed] = useState(false);
@@ -113,12 +113,12 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
       </label>
       <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
         <span style={{ ...fM, fontSize: 11, color: T.muted }}>
-          {sourceType === "creator" ? "HANDLE" : sourceType === "hashtag" ? "HASHTAG" : "KEYWORD"}
+          {sourceType === "creator" ? "HANDLE" : sourceType === "hashtag" ? "HASHTAG" : sourceType === "collection" ? "COLLECTION URL OR ID" : "KEYWORD"}
         </span>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={sourceType === "creator" ? "@handle" : sourceType === "hashtag" ? "#tag" : "phrase"}
+          placeholder={sourceType === "creator" ? "@handle" : sourceType === "hashtag" ? "#tag" : sourceType === "collection" ? "tiktok.com/@user/collection/… or 7682881973966146335" : "phrase"}
           style={inputStyle}
         />
       </label>
