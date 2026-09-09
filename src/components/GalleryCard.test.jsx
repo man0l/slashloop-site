@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -7,14 +7,15 @@ import GalleryCard from "./GalleryCard.jsx";
 
 // Stub only the network calls; keep the real friendlyAnalysisError /
 // friendlyJobError so the card's error path is tested against the real mapping.
-const { getVideoDetail, analyzeVideo } = vi.hoisted(() => ({
+const { getVideoDetail, analyzeVideo, fetchVideoPreview } = vi.hoisted(() => ({
   getVideoDetail: vi.fn(),
   analyzeVideo: vi.fn(),
+  fetchVideoPreview: vi.fn(),
 }));
 
 vi.mock("../lib/video.js", async () => {
   const actual = await vi.importActual("../lib/video.js");
-  return { ...actual, getVideoDetail, analyzeVideo };
+  return { ...actual, getVideoDetail, analyzeVideo, fetchVideoPreview };
 });
 
 vi.mock("../lib/toast.jsx", () => ({
@@ -29,6 +30,11 @@ vi.mock("../lib/gallery.js", async () => {
 beforeEach(() => {
   getVideoDetail.mockReset();
   analyzeVideo.mockReset();
+  fetchVideoPreview.mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 const card = {
@@ -203,30 +209,48 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
   });
 
-  it("watch-video: preview download action appears whenever a stored MP4 exists, hidden otherwise", async () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
-
-    const { unmount } = renderCard(<GalleryCard card={{ ...card, mediaUrl: "https://media/1.mp4" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-    const watch = screen.getByRole("link", { name: "Watch video" });
-    expect(watch.getAttribute("href")).toBe("https://media/1.mp4");
-    expect(watch.getAttribute("target")).toBe("_blank");
-    unmount();
+  it("download: queues a fetch on click and swaps the thumbnail for the video once stored", async () => {
+    const bare = detailFor({ analysis: null, mediaUrl: null });
+    getVideoDetail
+      .mockResolvedValueOnce(bare) // hydrate
+      .mockResolvedValueOnce({ ...bare }) // first poll: still nothing
+      .mockResolvedValueOnce({ ...bare, mediaUrl: "https://media/1.mp4" }); // stored
+    fetchVideoPreview.mockResolvedValue({ queued: true, jobId: "j1", status: "queued" });
 
     renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-    expect(screen.queryByRole("link", { name: "Watch video" })).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByText("@maker").closest("article"));
+    const download = await screen.findByRole("button", { name: "Download video" });
+    // Download sits above Analyze in the overlay.
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.indexOf("Download video")).toBeLessThan(buttons.indexOf("Analyze with Gemini"));
+
+    // Let hydration commit (the overlay also renders pre-hydration; clicking
+    // before detail lands would take the unhydrated branch).
+    await waitFor(() => expect(getVideoDetail).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    vi.useFakeTimers();
+    fireEvent.click(download);
+    await vi.advanceTimersByTimeAsync(0); // flush POST
+    expect(fetchVideoPreview).toHaveBeenCalledWith("tok-1", { workspaceId: "ws-1", videoId: "vid-1" });
+    await vi.advanceTimersByTimeAsync(4000); // first poll
+    await vi.advanceTimersByTimeAsync(4000); // stored
+    expect(document.querySelector("video")).not.toBeNull();
+    expect(document.querySelector("video").getAttribute("src")).toBe("https://media/1.mp4");
+    expect(analyzeVideo).not.toHaveBeenCalled();
   });
 
-  it("watch-fallback: no stored MP4 shows Watch on TikTok linking to the original post, hidden when no url either", async () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
+  it("download: stored media hides the Download button and plays immediately without queueing", async () => {
+    getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: "https://media/1.mp4" });
+    fetchVideoPreview.mockResolvedValue({ alreadyStored: true });
 
-    const { unmount } = renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-    const watch = screen.getByRole("link", { name: "Watch on TikTok" });
-    expect(watch.getAttribute("href")).toBe("https://tiktok.com/@maker/v/1");
-    expect(watch.getAttribute("target")).toBe("_blank");
-    unmount();
-
-    renderCard(<GalleryCard card={{ ...card, mediaUrl: null, url: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-    expect(screen.queryByRole("link", { name: "Watch on TikTok" })).not.toBeInTheDocument();
+    renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    fireEvent.mouseEnter(screen.getByText("@maker").closest("article"));
+    await waitFor(() => expect(getVideoDetail).toHaveBeenCalled());
+    // Stored copy known: no Download button (only Analyze), video plays.
+    expect(screen.queryByRole("button", { name: "Download video" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Analyze with Gemini" })).toBeInTheDocument();
+    expect(document.querySelector("video")).not.toBeNull();
+    expect(fetchVideoPreview).not.toHaveBeenCalled();
   });
 
   it("scrape failure: shows a warning icon + tooltip and a note when the card carries a fetchError and has no media", async () => {

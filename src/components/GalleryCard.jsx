@@ -5,8 +5,9 @@
 //                    (always visible on touch/small screens, which have no hover)
 //   - running     -> spinner overlay ("Analyzing…")
 //   - analyzed    -> the stored video replaces the thumbnail (playable)
-// "Watch video" corner action downloads/opens the stored MP4 preview
-// whenever one exists, regardless of analysis state.
+// "Download video" queues a free download-only fetch (no analysis) and sits
+// above "Analyze with Gemini" in the hover overlay; the stored MP4 then
+// plays inline via the shared detail state.
 //   - failed      -> Sources-style row below the meta: warning icon + tooltip,
 //                    retry icon when a retry can help (never for insufficient
 //                    credits, which a retry would just re-charge)
@@ -105,7 +106,7 @@ function Thumb({ src }) {
 }
 
 export default function GalleryCard({ card, index, accessToken, workspaceId, sources, galleryCards, highlighted }) {
-  const { phase, detail, error, busy, hydrate, analyze, retry } = useVideoAnalysis({
+  const { phase, detail, error, busy, hydrate, analyze, retry, downloadPhase, downloading, download } = useVideoAnalysis({
     accessToken,
     workspaceId,
     videoId: card.id,
@@ -187,9 +188,21 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
 
         {ready && (
           <div
-            className="absolute inset-0 flex items-center justify-center transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
             style={{ background: "rgba(20,24,29,0.30)" }}
           >
+            {(!mediaUrl || downloadPhase === "failed") && (
+              <button
+                type="button"
+                onClick={download}
+                disabled={downloading}
+                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+                style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}
+              >
+                <PlayIcon />
+                {downloading ? "Downloading…" : "Download video"}
+              </button>
+            )}
             <button
               type="button"
               onClick={analyze}
@@ -211,43 +224,6 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           </div>
         )}
 
-        {/* Watch corner action — always present when there is something to
-            watch. Stored MP4 preview wins ("Watch video", independent of
-            analysis state; the hover "Analyze" overlay only shows for
-            unanalyzed videos). Without a stored copy, fall back to the
-            original post ("Watch on TikTok"). `download` hints at saving;
-            target _blank covers cross-origin signed URLs where browsers
-            ignore the attribute and just play. */}
-        {mediaUrl ? (
-          <a
-            href={mediaUrl}
-            download
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Watch video"
-            title="Watch video"
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold transition-transform hover:-translate-y-0.5"
-            style={{ ...fB, fontSize: 11, background: "rgba(20,24,29,0.75)", color: "#fff" }}
-          >
-            <PlayIcon />
-            Watch video
-          </a>
-        ) : card.url ? (
-          <a
-            href={card.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Watch on TikTok"
-            title="Watch on TikTok"
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold transition-transform hover:-translate-y-0.5"
-            style={{ ...fB, fontSize: 11, background: "rgba(20,24,29,0.75)", color: "#fff" }}
-          >
-            <PlayIcon />
-            Watch on TikTok
-          </a>
-        ) : null}
       </div>
 
       <div className="flex grow flex-col gap-2 p-3">

@@ -1,14 +1,18 @@
-// Per-card state machine for "Analyze with Gemini" in the gallery.
+// Per-card state machines for "Analyze with Gemini" + "Download video".
 //
-//   idle -> checking (lazy GET detail on first hover) -> prompt | queued/running/polling | done | failed
-//                                        \-- from a direct click (mobile) -- queued -> ... -> done | failed
+// Analyze: idle -> checking (lazy GET detail on first hover) -> prompt |
+//   queued/running/polling | done | failed (from a direct click (mobile) --
+//   queued -> ... -> done | failed).
+// Download: idle -> downloading (poll detail until mediaUrl appears) ->
+//   done | failed. Free queue job, no credits — the stored MP4 then plays
+//   inline via the shared detail state, and Analyze stays available after.
 //
 // The lazy hydrate exists so an already-analyzed video is never charged twice:
 // clicking analyze re-runs Gemini and debits credits, so the card only offers
 // the action once the detail endpoint has confirmed the video is unexplored.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getVideoDetail, analyzeVideo, friendlyAnalysisError, friendlyJobError } from "./video.js";
+import { getVideoDetail, analyzeVideo, fetchVideoPreview, friendlyAnalysisError, friendlyFetchError, friendlyJobError } from "./video.js";
 
 // A queued native analysis takes ~20-60s+ and the worker drains in ~45s
 // batches, so we poll every 4s and give up (as a retryable failure) after 4m
@@ -36,6 +40,80 @@ export default function useVideoAnalysis({ accessToken, workspaceId, videoId }) 
 
   // Clear any in-flight poll on unmount.
   useEffect(() => stopPolling, [stopPolling]);
+
+  // Download-only fetch state. Shares the card detail above (a finished
+  // download flips mediaUrl on the same detail the thumbnail renders), but
+  // polls on its own timer so analyzing and downloading never fight over one.
+  const [downloadPhase, setDownloadPhase] = useState("idle"); // idle | downloading | done | failed
+  const [downloadError, setDownloadError] = useState(null); // { kind, retryable, message }
+  const downloading = downloadPhase === "downloading";
+  const dlTimer = useRef(null);
+  const dlStart = useRef(0);
+
+  const stopDownloadPolling = useCallback(() => {
+    if (dlTimer.current) {
+      clearInterval(dlTimer.current);
+      dlTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopDownloadPolling, [stopDownloadPolling]);
+
+  const download = useCallback(async () => {
+    if (downloading || downloadPhase === "done") return;
+    // Ensure detail (without disturbing the analyze phase machine).
+    let d = detail;
+    if (!d) {
+      try {
+        d = await getVideoDetail(accessToken, { workspaceId, videoId });
+        setDetail(d);
+      } catch (err) {
+        setDownloadError(friendlyFetchError(err));
+        setDownloadPhase("failed");
+        return;
+      }
+    }
+    if (d.mediaUrl) {
+      setDownloadPhase("done");
+      return;
+    }
+    setDownloadPhase("downloading");
+    setDownloadError(null);
+    try {
+      await fetchVideoPreview(accessToken, { workspaceId, videoId });
+    } catch (err) {
+      setDownloadError(friendlyFetchError(err));
+      setDownloadPhase("failed");
+      return;
+    }
+    dlStart.current = Date.now();
+    stopDownloadPolling();
+    dlTimer.current = setInterval(async () => {
+      if (Date.now() - dlStart.current > POLL_CAP_MS) {
+        stopDownloadPolling();
+        setDownloadError({ kind: "failure", retryable: true, message: "Download is still running — tap retry to check again." });
+        setDownloadPhase("failed");
+        return;
+      }
+      let cur;
+      try {
+        cur = await getVideoDetail(accessToken, { workspaceId, videoId });
+      } catch {
+        return;
+      }
+      setDetail(cur);
+      if (cur.mediaUrl) {
+        stopDownloadPolling();
+        setDownloadPhase("done");
+        return;
+      }
+      if (cur.analysisJob?.status === "failed") {
+        stopDownloadPolling();
+        setDownloadError(friendlyFetchError({ message: cur.analysisJob.lastError }));
+        setDownloadPhase("failed");
+      }
+    }, POLL_MS);
+  }, [accessToken, workspaceId, videoId, detail, downloading, downloadPhase, stopDownloadPolling]);
 
   const startPolling = useCallback(
     (initialStatus) => {
@@ -148,5 +226,5 @@ export default function useVideoAnalysis({ accessToken, workspaceId, videoId }) 
     }
   }, [accessToken, workspaceId, videoId, startPolling]);
 
-  return { phase, detail, error, busy, hydrate, analyze, retry: analyze };
+  return { phase, detail, error, busy, hydrate, analyze, retry: analyze, downloadPhase, downloadError, downloading, download };
 }

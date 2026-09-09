@@ -1,11 +1,13 @@
 // Client for the connector's per-video endpoints on VITE_MCP_URL:
 //   GET  /api/videos/:id?workspaceId=...          — detail (analysis, playback URL, job status)
 //   POST /api/videos/:id/analyze { workspaceId }  — trigger AI analysis
+//   POST /api/videos/:id/fetch { workspaceId }    — queue a download-only
+//                                                  fetch (store the MP4, no analysis, free)
 //
 // Contract lives in the connector's api/videos.ts; the gallery's per-card
-// "Analyze with Gemini" UI is the only caller. Error shaping mirrors the
-// Sources page so both surfaces render failures the same way (warning icon +
-// tooltip, retry only when it can help).
+// "Analyze with Gemini" + "Download video" UI is the only caller. Error
+// shaping mirrors the Sources page so both surfaces render failures the same
+// way (warning icon + tooltip, retry only when it can help).
 
 import { apiFetch, ApiError } from "./http.js";
 
@@ -38,6 +40,37 @@ export async function analyzeVideo(accessToken, { workspaceId, videoId }) {
     accessToken,
     body: { workspaceId },
   });
+}
+
+/**
+ * POST /api/videos/:id/fetch { workspaceId } -> { queued: true, jobId, ... }
+ * or { alreadyStored: true } (nothing to do — the MP4 is already stored).
+ * Free: no credits involved, so no 402. Throws ApiError.
+ */
+export async function fetchVideoPreview(accessToken, { workspaceId, videoId }) {
+  return apiFetch(`/api/videos/${encodeURIComponent(videoId)}/fetch`, {
+    method: "POST",
+    accessToken,
+    body: { workspaceId },
+  });
+}
+
+/**
+ * Turn a fetch ApiError into a display shape:
+ *   - 404 video_not_found -> kind "notFound", not retryable
+ *   - anything else       -> kind "failure", retryable (fetch jobs fail for
+ *     scrape reasons — spend cap, CDN, deleted video — surfaced via the
+ *     detail poll's fetch-error mapping, so a bare retry is safe)
+ * Returns { kind, retryable, message }.
+ */
+export function friendlyFetchError(err) {
+  const status = err?.status;
+  const code = err?.code;
+  const message = err?.message || "Download failed.";
+  if (status === 404 || code === "video_not_found") {
+    return { kind: "notFound", retryable: false, message };
+  }
+  return { kind: "failure", retryable: true, message };
 }
 
 /**
