@@ -216,6 +216,19 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     expect(screen.queryByRole("link", { name: "Watch video" })).not.toBeInTheDocument();
   });
 
+  it("watch-fallback: no stored MP4 shows Watch on TikTok linking to the original post, hidden when no url either", async () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
+
+    const { unmount } = renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    const watch = screen.getByRole("link", { name: "Watch on TikTok" });
+    expect(watch.getAttribute("href")).toBe("https://tiktok.com/@maker/v/1");
+    expect(watch.getAttribute("target")).toBe("_blank");
+    unmount();
+
+    renderCard(<GalleryCard card={{ ...card, mediaUrl: null, url: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    expect(screen.queryByRole("link", { name: "Watch on TikTok" })).not.toBeInTheDocument();
+  });
+
   it("scrape failure: shows a warning icon + tooltip and a note when the card carries a fetchError and has no media", async () => {
     getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null });
 

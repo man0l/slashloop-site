@@ -211,12 +211,14 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           </div>
         )}
 
-        {/* Preview download — persistent corner action whenever a stored MP4
-            exists (independent of analysis state; the hover "Analyze" overlay
-            only shows for unanalyzed videos). `download` hints at saving;
+        {/* Watch corner action — always present when there is something to
+            watch. Stored MP4 preview wins ("Watch video", independent of
+            analysis state; the hover "Analyze" overlay only shows for
+            unanalyzed videos). Without a stored copy, fall back to the
+            original post ("Watch on TikTok"). `download` hints at saving;
             target _blank covers cross-origin signed URLs where browsers
             ignore the attribute and just play. */}
-        {mediaUrl && (
+        {mediaUrl ? (
           <a
             href={mediaUrl}
             download
@@ -231,7 +233,21 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
             <PlayIcon />
             Watch video
           </a>
-        )}
+        ) : card.url ? (
+          <a
+            href={card.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Watch on TikTok"
+            title="Watch on TikTok"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold transition-transform hover:-translate-y-0.5"
+            style={{ ...fB, fontSize: 11, background: "rgba(20,24,29,0.75)", color: "#fff" }}
+          >
+            <PlayIcon />
+            Watch on TikTok
+          </a>
+        ) : null}
       </div>
 
       <div className="flex grow flex-col gap-2 p-3">
