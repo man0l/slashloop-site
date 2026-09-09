@@ -5,6 +5,8 @@
 //                    (always visible on touch/small screens, which have no hover)
 //   - running     -> spinner overlay ("Analyzing…")
 //   - analyzed    -> the stored video replaces the thumbnail (playable)
+// "Watch video" corner action downloads/opens the stored MP4 preview
+// whenever one exists, regardless of analysis state.
 //   - failed      -> Sources-style row below the meta: warning icon + tooltip,
 //                    retry icon when a retry can help (never for insufficient
 //                    credits, which a retry would just re-charge)
@@ -14,7 +16,7 @@
 
 import { useRef, useState } from "react";
 import { T, fB, fM, fmt, fmtAge, fmtTime } from "../lib/theme.js";
-import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner } from "./ui.jsx";
+import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner, PlayIcon } from "./ui.jsx";
 import useVideoAnalysis from "../lib/useVideoAnalysis.js";
 import { displayMediaUrl, displayMediaUrls } from "../lib/mediaUrl.js";
 import AnalysisModal from "./AnalysisModal.jsx";
@@ -207,6 +209,28 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
               {phase === "checking" ? "Checking…" : "Analyzing…"}
             </div>
           </div>
+        )}
+
+        {/* Preview download — persistent corner action whenever a stored MP4
+            exists (independent of analysis state; the hover "Analyze" overlay
+            only shows for unanalyzed videos). `download` hints at saving;
+            target _blank covers cross-origin signed URLs where browsers
+            ignore the attribute and just play. */}
+        {mediaUrl && (
+          <a
+            href={mediaUrl}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Watch video"
+            title="Watch video"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold transition-transform hover:-translate-y-0.5"
+            style={{ ...fB, fontSize: 11, background: "rgba(20,24,29,0.75)", color: "#fff" }}
+          >
+            <PlayIcon />
+            Watch video
+          </a>
         )}
       </div>
 

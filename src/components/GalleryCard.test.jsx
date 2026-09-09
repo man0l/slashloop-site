@@ -203,6 +203,19 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
   });
 
+  it("watch-video: preview download action appears whenever a stored MP4 exists, hidden otherwise", async () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
+
+    const { unmount } = renderCard(<GalleryCard card={{ ...card, mediaUrl: "https://media/1.mp4" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    const watch = screen.getByRole("link", { name: "Watch video" });
+    expect(watch.getAttribute("href")).toBe("https://media/1.mp4");
+    expect(watch.getAttribute("target")).toBe("_blank");
+    unmount();
+
+    renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    expect(screen.queryByRole("link", { name: "Watch video" })).not.toBeInTheDocument();
+  });
+
   it("scrape failure: shows a warning icon + tooltip and a note when the card carries a fetchError and has no media", async () => {
     getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null });
 
