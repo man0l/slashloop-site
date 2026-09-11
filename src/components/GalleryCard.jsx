@@ -6,8 +6,9 @@
 //   - running     -> spinner overlay ("Analyzing…")
 //   - analyzed    -> the stored video replaces the thumbnail (playable)
 // "Download video" queues a free download-only fetch (no analysis) and sits
-// above "Analyze with Gemini" in the hover overlay; the stored MP4 then
-// plays inline via the shared detail state.
+// above "Analyze with Gemini" in the hover overlay. Once the MP4 is stored
+// the overlay comes off so native controls work; Analyze moves below the
+// player and does not start unless clicked.
 //   - failed      -> Sources-style row below the meta: warning icon + tooltip,
 //                    retry icon when a retry can help (never for insufficient
 //                    credits, which a retry would just re-charge)
@@ -186,23 +187,24 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           <Thumb src={thumbUrl} />
         )}
 
-        {ready && (
+        {/* Curtain only while there is no playable MP4. After Download video
+            lands a mediaUrl, the native player must stay clickable — Analyze
+            moves below so it cannot sit on the controls. */}
+        {ready && !mediaUrl && (
           <div
             className="absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
             style={{ background: "rgba(20,24,29,0.30)" }}
           >
-            {(!mediaUrl || downloadPhase === "failed") && (
-              <button
-                type="button"
-                onClick={download}
-                disabled={downloading}
-                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
-                style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}
-              >
-                <PlayIcon />
-                {downloading ? "Downloading…" : "Download video"}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={download}
+              disabled={downloading}
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}
+            >
+              <PlayIcon />
+              {downloading ? "Downloading…" : "Download video"}
+            </button>
             <button
               type="button"
               onClick={analyze}
@@ -215,7 +217,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           </div>
         )}
 
-        {working && (
+        {working && !mediaUrl && (
           <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: "rgba(20,24,29,0.45)" }}>
             <div className="flex flex-col items-center gap-1.5 text-white" style={{ ...fB, fontSize: 12 }}>
               <Spinner />
@@ -279,6 +281,24 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
         <p style={{ ...fB, fontSize: 13, color: T.ink, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", margin: 0 }}>
           {card.caption || <em>no caption</em>}
         </p>
+
+        {mediaUrl && ready && (
+          <button
+            type="button"
+            onClick={analyze}
+            className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
+            style={{ ...fB, fontSize: 12, background: T.ink, color: "#fff" }}
+          >
+            <SparkleIcon />
+            Analyze with Gemini
+          </button>
+        )}
+        {mediaUrl && (phase === "queued" || phase === "running") && (
+          <div className="flex items-center gap-1.5" style={{ ...fB, fontSize: 12, color: T.muted }}>
+            <Spinner />
+            Analyzing…
+          </div>
+        )}
 
         {/* Scrape failure — mirrors the connector gallery's note, so the card
             says why there's no video instead of silently showing a thumbnail. */}

@@ -207,6 +207,9 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     expect(video.getAttribute("src")).toBe("https://media/1.mp4");
     // Not analyzed yet, so no summary/details — the analyze affordance remains.
     expect(screen.queryByText("View analysis →")).not.toBeInTheDocument();
+    // Analyze lives below the player so native controls stay clickable.
+    expect(video.parentElement.querySelector("button")).toBeNull();
+    expect(screen.getByRole("button", { name: "Analyze with Gemini" })).toBeInTheDocument();
   });
 
   it("download: queues a fetch on click and swaps the thumbnail for the video once stored", async () => {
@@ -245,11 +248,13 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
 
     renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
     fireEvent.mouseEnter(screen.getByText("@maker").closest("article"));
-    await waitFor(() => expect(getVideoDetail).toHaveBeenCalled());
-    // Stored copy known: no Download button (only Analyze), video plays.
+    await waitFor(() => expect(document.querySelector("video")).not.toBeNull());
+    // Stored copy known: no Download button, video plays, Analyze sits below
+    // the player (not as a curtain over the controls).
     expect(screen.queryByRole("button", { name: "Download video" })).not.toBeInTheDocument();
+    const video = document.querySelector("video");
+    expect(video.parentElement.querySelector("button")).toBeNull();
     expect(screen.getByRole("button", { name: "Analyze with Gemini" })).toBeInTheDocument();
-    expect(document.querySelector("video")).not.toBeNull();
     expect(fetchVideoPreview).not.toHaveBeenCalled();
   });
 
