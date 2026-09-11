@@ -196,6 +196,14 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     expect(analyzeVideo).not.toHaveBeenCalled();
   });
 
+  it("photo posts do not offer Download video and do not use a video player", () => {
+    getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null, isSlideshow: true, slideshowImages: [] });
+    renderCard(<GalleryCard card={{ ...card, mediaUrl: null, isSlideshow: true, slideshowImages: [] }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+    expect(document.querySelector("video")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Download video" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Analyze with Gemini" })).toBeInTheDocument();
+  });
+
   it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
     getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null
 

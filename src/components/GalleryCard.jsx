@@ -126,8 +126,9 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   const failed = phase === "failed";
 
   const analysis = detail?.analysis?.data;
-  const mediaUrl = displayMediaUrl(detail?.mediaUrl ?? card.mediaUrl);
   const slideshowImages = displayMediaUrls(detail?.slideshowImages ?? card.slideshowImages);
+  const isSlideshow = Boolean(detail?.isSlideshow ?? card.isSlideshow) || slideshowImages.length > 0;
+  const mediaUrl = isSlideshow ? null : displayMediaUrl(detail?.mediaUrl ?? card.mediaUrl);
   const thumbUrl = displayMediaUrl(card.thumbUrl);
   const keyMoments = Array.isArray(analysis?.keyMoments) ? analysis.keyMoments : [];
 
@@ -172,7 +173,9 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           the playable video replaces the thumbnail; the thumbnail is only a
           placeholder for videos whose storage copy isn't available yet. */}
       <div className="relative overflow-hidden rounded-t-lg">
-        {mediaUrl ? (
+        {slideshowImages.length > 0 ? (
+          <Slideshow images={slideshowImages} />
+        ) : mediaUrl ? (
           <video
             ref={videoRef}
             src={mediaUrl}
@@ -181,16 +184,14 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
             preload="metadata"
             style={{ ...thumbStyle, objectFit: "cover", display: "block", background: "#000" }}
           />
-        ) : slideshowImages.length > 0 ? (
-          <Slideshow images={slideshowImages} />
         ) : (
           <Thumb src={thumbUrl} />
         )}
 
-        {/* Curtain only while there is no playable MP4. After Download video
-            lands a mediaUrl, the native player must stay clickable — Analyze
-            moves below so it cannot sit on the controls. */}
-        {ready && !mediaUrl && (
+        {/* Curtain only while there is no playable MP4 or slideshow. Photo
+            posts have no file to download — Download video is omitted. After
+            an MP4 lands, Analyze moves below so native controls stay clickable. */}
+        {ready && !mediaUrl && !isSlideshow && (
           <div
             className="absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
             style={{ background: "rgba(20,24,29,0.30)" }}
@@ -282,7 +283,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           {card.caption || <em>no caption</em>}
         </p>
 
-        {mediaUrl && ready && (
+        {(mediaUrl || isSlideshow) && ready && (
           <button
             type="button"
             onClick={analyze}
@@ -293,7 +294,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
             Analyze with Gemini
           </button>
         )}
-        {mediaUrl && (phase === "queued" || phase === "running") && (
+        {(mediaUrl || isSlideshow) && (phase === "queued" || phase === "running") && (
           <div className="flex items-center gap-1.5" style={{ ...fB, fontSize: 12, color: T.muted }}>
             <Spinner />
             Analyzing…
