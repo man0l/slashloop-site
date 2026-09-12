@@ -7,16 +7,20 @@ import GalleryCard from "./GalleryCard.jsx";
 
 // Stub only the network calls; keep the real friendlyAnalysisError /
 // friendlyJobError so the card's error path is tested against the real mapping.
-const { getVideoDetail, analyzeVideo, fetchVideoPreview } = vi.hoisted(() => ({
+const { getVideoDetail, analyzeVideo, fetchVideoPreview, recreateSlideshow, downloadSlideshowZip } = vi.hoisted(() => ({
   getVideoDetail: vi.fn(),
   analyzeVideo: vi.fn(),
   fetchVideoPreview: vi.fn(),
+  recreateSlideshow: vi.fn(),
+  downloadSlideshowZip: vi.fn(),
 }));
 
 vi.mock("../lib/video.js", async () => {
   const actual = await vi.importActual("../lib/video.js");
-  return { ...actual, getVideoDetail, analyzeVideo, fetchVideoPreview };
+  return { ...actual, getVideoDetail, analyzeVideo, fetchVideoPreview, recreateSlideshow };
 });
+
+vi.mock("../lib/slideshowZip.js", () => ({ downloadSlideshowZip }));
 
 vi.mock("../lib/toast.jsx", () => ({
   useToast: () => ({ showToast: vi.fn() }),
@@ -31,6 +35,8 @@ beforeEach(() => {
   getVideoDetail.mockReset();
   analyzeVideo.mockReset();
   fetchVideoPreview.mockReset();
+  recreateSlideshow.mockReset();
+  downloadSlideshowZip.mockReset();
 });
 
 afterEach(() => {
@@ -198,10 +204,41 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
 
   it("photo posts do not offer Download video and do not use a video player", () => {
     getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null, isSlideshow: true, slideshowImages: [] });
+    fetchVideoPreview.mockResolvedValue({ queued: true, jobId: "j1", status: "queued" });
     renderCard(<GalleryCard card={{ ...card, mediaUrl: null, isSlideshow: true, slideshowImages: [] }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
     expect(document.querySelector("video")).toBeNull();
     expect(screen.queryByRole("button", { name: "Download video" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Analyze with Gemini" })).toBeInTheDocument();
+  });
+
+  it("photo posts auto-fetch every slide and render the carousel", async () => {
+    const bare = { ...unexploredDetail, mediaUrl: null, isSlideshow: true, slideshowImages: [] };
+    getVideoDetail
+      .mockResolvedValueOnce(bare)
+      .mockResolvedValueOnce(bare)
+      .mockResolvedValueOnce({
+        ...bare,
+        slideshowImages: ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"],
+      });
+    fetchVideoPreview.mockResolvedValue({ queued: true, jobId: "j1", status: "queued" });
+
+    vi.useFakeTimers();
+    renderCard(
+      <GalleryCard
+        card={{ ...card, mediaUrl: null, isSlideshow: true, slideshowImages: [] }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchVideoPreview).toHaveBeenCalledWith("tok-1", { workspaceId: "ws-1", videoId: "vid-1" });
+    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(document.querySelector("img").getAttribute("src")).toBe("https://cdn.example/a.jpg");
+    expect(document.querySelector("video")).toBeNull();
   });
 
   it("downloads-only: video replaces the thumbnail as soon as mediaUrl is present, before any analysis", async () => {    // Card already has a downloaded copy (mediaUrl) but no analysis yet.
@@ -220,6 +257,20 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     expect(screen.getByRole("button", { name: "Analyze with Gemini" })).toBeInTheDocument();
   });
 
+  it("un-downloaded videos offer Download + Analyze below the thumb without any hover", () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail); // analysis: null, no mediaUrl
+
+    renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
+
+    // No curtain, no hover needed — the action row is always visible and
+    // download sits before analyze.
+    const download = screen.getByRole("button", { name: "Download video" });
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.indexOf("Download video")).toBeLessThan(buttons.indexOf("Analyze with Gemini"));
+    expect(download).not.toBeDisabled();
+    expect(document.querySelector("video")).toBeNull();
+  });
+
   it("download: queues a fetch on click and swaps the thumbnail for the video once stored", async () => {
     const bare = detailFor({ analysis: null, mediaUrl: null });
     getVideoDetail
@@ -231,7 +282,7 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     renderCard(<GalleryCard card={{ ...card, mediaUrl: null }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
     fireEvent.mouseEnter(screen.getByText("@maker").closest("article"));
     const download = await screen.findByRole("button", { name: "Download video" });
-    // Download sits above Analyze in the overlay.
+    // Download sits before Analyze in the shared action row.
     const buttons = screen.getAllByRole("button").map((b) => b.textContent);
     expect(buttons.indexOf("Download video")).toBeLessThan(buttons.indexOf("Analyze with Gemini"));
 
@@ -340,6 +391,7 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
 
     expect(document.querySelector("video")).toBeNull();
     expect(screen.queryByText(/Couldn't scrape this video/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recreate slideshow" })).toBeInTheDocument();
     const img = document.querySelector("img");
     expect(img).not.toBeNull();
     expect(img.getAttribute("src")).toBe("https://cdn.example/a.jpg");
@@ -347,6 +399,32 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     fireEvent.click(screen.getByRole("button", { name: "Next slide" }));
     expect(document.querySelector("img").getAttribute("src")).toBe("https://cdn.example/b.jpg");
     expect(screen.getByText("2/2")).toBeInTheDocument();
+  });
+
+  it("analyzed photo posts still offer Recreate slideshow", async () => {
+    getVideoDetail.mockResolvedValue({
+      ...detailFor(),
+      mediaUrl: null,
+      isSlideshow: true,
+      slideshowImages: ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"],
+    });
+
+    renderCard(
+      <GalleryCard
+        card={{
+          ...card,
+          mediaUrl: null,
+          isSlideshow: true,
+          slideshowImages: ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"],
+        }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+    fireEvent.mouseEnter(screen.getByText("@maker").closest("article"));
+    await waitFor(() => expect(screen.getByText("View analysis →")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Recreate slideshow" })).toBeInTheDocument();
   });
 
   it("already-analyzed video on hover swaps the thumbnail for the playable video and offers the details, not a re-charge", async () => {
@@ -457,5 +535,76 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
       expect(screen.getByRole("button", { name: /Insufficient credits/ })).toBeInTheDocument(),
     );
     expect(screen.queryByRole("button", { name: "Retry — last analysis failed" })).not.toBeInTheDocument();
+  });
+});
+
+describe("GalleryCard — slideshow zip download", () => {
+  const slides = ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"];
+  const slideshowDetail = { ...unexploredDetail, mediaUrl: null, isSlideshow: true, slideshowImages: slides };
+
+  function renderSlideshowCard(extraCard = {}, detail = slideshowDetail) {
+    getVideoDetail.mockResolvedValue(detail);
+    return renderCard(
+      <GalleryCard
+        card={{ ...card, mediaUrl: null, isSlideshow: true, slideshowImages: slides, ...extraCard }}
+        index={1}
+        accessToken="tok-1"
+        workspaceId="ws-1"
+      />,
+    );
+  }
+
+  it("offers 'Download all slides as ZIP' on the carousel and zips the displayed slides", async () => {
+    downloadSlideshowZip.mockResolvedValueOnce(2);
+    renderSlideshowCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download all slides as ZIP" }));
+
+    await waitFor(() =>
+      expect(downloadSlideshowZip).toHaveBeenCalledWith(slides, { fileName: "slides-vid-1.zip" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Download all slides as ZIP" })).toHaveAttribute("aria-busy", "false"),
+    );
+  });
+
+  it("goes busy while the zip is being built, then settles", async () => {
+    let release;
+    downloadSlideshowZip.mockImplementationOnce(() => new Promise((r) => { release = r; }));
+    renderSlideshowCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download all slides as ZIP" }));
+    const btn = screen.getByRole("button", { name: "Download all slides as ZIP" });
+    await waitFor(() => expect(btn).toHaveAttribute("aria-busy", "true"));
+    release(2);
+    await waitFor(() => expect(btn).toHaveAttribute("aria-busy", "false"));
+  });
+
+  it("a failed pack flips the button to a retry affordance and clicking it retries", async () => {
+    downloadSlideshowZip.mockRejectedValueOnce(new Error("offline"));
+    renderSlideshowCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download all slides as ZIP" }));
+    const failed = await screen.findByRole("button", { name: "Couldn't download slides — tap to retry" });
+    expect(failed).toBeInTheDocument();
+
+    downloadSlideshowZip.mockResolvedValueOnce(2);
+    fireEvent.click(failed);
+    await waitFor(() => expect(downloadSlideshowZip).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Download all slides as ZIP" })).toBeInTheDocument(),
+    );
+  });
+
+  it("zips the recreated set while the Recreated toggle is showing it", async () => {
+    downloadSlideshowZip.mockResolvedValueOnce(2);
+    const recreationImages = ["https://cdn.example/r1.jpg", "https://cdn.example/r2.jpg"];
+    renderSlideshowCard({ recreationImages }, { ...slideshowDetail, recreationImages });
+
+    fireEvent.click(screen.getByRole("button", { name: "Download all slides as ZIP" }));
+
+    await waitFor(() =>
+      expect(downloadSlideshowZip).toHaveBeenCalledWith(recreationImages, { fileName: "recreated-slides-vid-1.zip" }),
+    );
   });
 });

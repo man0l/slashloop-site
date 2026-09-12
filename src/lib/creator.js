@@ -16,7 +16,8 @@ export function trackedCreatorSource(sources, handle) {
   ) ?? null;
 }
 
-/** The workspace's own TikTok, if one creator source is flagged isSelf. */
+/** The workspace's own TikTok — several creator sources can be flagged
+ *  isSelf; this returns the first (oldest) one. */
 export function selfCreatorSource(sources) {
   return (sources ?? []).find((s) => s.isSelf && s.sourceType === "creator") ?? null;
 }

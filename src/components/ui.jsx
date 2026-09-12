@@ -121,6 +121,26 @@ export const CloseIcon = () => (
   </svg>
 );
 
+// "Download all slides as ZIP" — an archive box taking a download, so it
+// reads as the whole set packed up, not a single-file save.
+export const ZipDownloadIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <rect x="3" y="4" width="18" height="4" rx="1" />
+    <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+    <path d="M12 11v6" />
+    <path d="m9.5 14.5 2.5 2.5 2.5-2.5" />
+  </svg>
+);
+
+// Single-file download — an arrow dropping into a tray.
+export const DownloadIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <path d="M12 4v11" />
+    <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+    <path d="M4 19h16" />
+  </svg>
+);
+
 // The "Analyze with Gemini" action — a sparkle reads as generative/AI without
 // adding a word next to the glyph.
 export const SparkleIcon = () => (

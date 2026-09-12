@@ -10,6 +10,12 @@ import { useToast } from "../lib/toast.jsx";
 import { getWeeklyRetro, getBenchmark, StudioApiError } from "../lib/studio.js";
 import { refreshSource, SourcesApiError } from "../lib/sources.js";
 
+// Tooltip for the resync link — names the specific accounts being pulled.
+function resyncTargetsLabel(retro) {
+  const handles = (retro.resyncTargets ?? []).map((t) => `@${t.handle}`);
+  return handles.length > 0 ? `Pull ${handles.join(" + ")} again` : "Pull your tracked account's feed again";
+}
+
 export default function Studio() {
   const { user, loading: authLoading, accessToken } = useAuth();
   const { activeWorkspaceId, loading: workspaceLoading } = useWorkspace();
@@ -28,11 +34,18 @@ export default function Studio() {
     enabled,
   });
 
-  // The only write Studio offers: pull the self source's feed again. There is
-  // no post log to type into — an empty retro is either "track your account"
-  // or "resync it", both resolved by the tracker itself.
+  // The only write Studio offers: pull the self sources' feeds again (a
+  // workspace can flag several of its own accounts). There is no post log to
+  // type into — an empty retro is either "track your account" or "resync",
+  // both resolved by the tracker itself.
   const resyncMutation = useMutation({
-    mutationFn: () => refreshSource(accessToken, activeWorkspaceId, retro.selfSourceId),
+    mutationFn: () =>
+      Promise.all(
+        (retro.resyncTargets?.length
+          ? retro.resyncTargets.map((t) => t.sourceId)
+          : retro.selfSourceIds ?? [retro.selfSourceId].filter(Boolean)
+        ).map((sourceId) => refreshSource(accessToken, activeWorkspaceId, sourceId)),
+      ),
     onSuccess: () => {
       showToast("Resync queued — new posts will land in the retro when it finishes.", { type: "success" });
       queryClient.invalidateQueries({ queryKey: ["studio-retro", activeWorkspaceId] });
@@ -56,6 +69,11 @@ export default function Studio() {
 
   const retro = retroQuery.data;
   const bench = benchQuery.data;
+  // Several personal accounts can be flagged — the retro reads them all.
+  // Handles fall back to the singular field for an in-flight old payload.
+  const selfHandles = retro?.selfHandles ?? (retro?.selfHandle ? [retro.selfHandle] : []);
+  // Accounts holding no videos (old payloads: resync iff the whole retro is empty).
+  const resyncNeeded = retro ? (retro.resyncTargets?.length ?? 0) > 0 || Boolean(retro.needsResync) : false;
 
   return (
     <section className="max-w-5xl mx-auto px-5 py-16">
@@ -100,17 +118,18 @@ export default function Studio() {
                 <p className="mt-2" style={{ ...fM, fontSize: 12, color: T.muted }}>
                   {retro.rows?.length ?? 0} this week
                   {retro.medianViews != null ? ` · your median ${fmt(Math.round(retro.medianViews))} views` : ""}
-                  {retro.selfHandle ? ` · @${retro.selfHandle}` : ""}
-                  {retro.needsResync && (
+                  {selfHandles.length > 0 ? ` · ${selfHandles.map((h) => `@${h}`).join(" + ")}` : ""}
+                  {resyncNeeded && (
                     <>
                       {" · "}
                       <button
                         type="button"
                         onClick={() => resyncMutation.mutate()}
                         disabled={resyncMutation.isPending}
+                        title={resyncTargetsLabel(retro)}
                         style={{ ...fM, fontSize: 12, fontWeight: 700, color: T.teal, textDecoration: "underline", opacity: resyncMutation.isPending ? 0.6 : 1 }}
                       >
-                        {resyncMutation.isPending ? "Queuing…" : "Resync your account"}
+                        {resyncMutation.isPending ? "Queuing…" : selfHandles.length > 1 ? "Resync your accounts" : "Resync your account"}
                       </button>
                     </>
                   )}
@@ -168,7 +187,10 @@ export default function Studio() {
                       </tr>
                     </thead>
                     <tbody>
-                      {[bench.you, ...(bench.creators ?? [])].filter(Boolean).map((c) => (
+                      {/* `you` is an array of your accounts on the current
+                          API and a single object on an older one — concat
+                          handles both. */}
+                      {[].concat(bench.you ?? [], ...(bench.creators ?? [])).filter(Boolean).map((c) => (
                         <tr key={c.sourceId} style={{ borderTop: `1px solid ${T.line}` }}>
                           <td className="py-2 pr-3" style={{ ...fB, fontSize: 13 }}>
                             @{c.handle}

@@ -1,26 +1,26 @@
 // One gallery card + its "Analyze with Gemini" flow.
 //
-// Thumb stage:
-//   - unexplored  -> hover reveals "Analyze with Gemini" over the thumbnail
-//                    (always visible on touch/small screens, which have no hover)
-//   - running     -> spinner overlay ("Analyzing…")
-//   - analyzed    -> the stored video replaces the thumbnail (playable)
-// "Download video" queues a free download-only fetch (no analysis) and sits
-// above "Analyze with Gemini" in the hover overlay. Once the MP4 is stored
-// the overlay comes off so native controls work; Analyze moves below the
-// player and does not start unless clicked.
-//   - failed      -> Sources-style row below the meta: warning icon + tooltip,
-//                    retry icon when a retry can help (never for insufficient
-//                    credits, which a retry would just re-charge)
-//
+// The media (stored MP4 player, slide carousel, or the cover thumb) is NEVER
+// covered by an overlay — videos and photo posts share one layout:
+//   - media stage on top, with a small corner spinner while a download,
+//     analysis, or recreation is in flight;
+//   - one action row below it, identical for both types: download first
+//     ("Download video" until the MP4 lands, "Download .zip" for the
+//     displayed slide set), then "Analyze with Gemini" (until analyzed),
+//     then the slideshow-only Recreate. Busy/failure states live inside
+//     these buttons (spinner, "Retry download" with the error as tooltip).
+// Hover only hydrates the card (lazy detail fetch); it never reveals or
+// blocks anything.
 // "View analysis →" opens AnalysisModal with the full details; key-moment
 // chips seek the playing video.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { T, fB, fM, fmt, fmtAge, fmtTime } from "../lib/theme.js";
-import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner, PlayIcon } from "./ui.jsx";
+import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner, DownloadIcon, ZipDownloadIcon } from "./ui.jsx";
 import useVideoAnalysis from "../lib/useVideoAnalysis.js";
 import { displayMediaUrl, displayMediaUrls } from "../lib/mediaUrl.js";
+import { recreateSlideshow, getVideoDetail, friendlyFetchError } from "../lib/video.js";
+import { downloadSlideshowZip } from "../lib/slideshowZip.js";
 import AnalysisModal from "./AnalysisModal.jsx";
 import CreatorChip from "./CreatorChip.jsx";
 import HookTestPanel, { StartHookTestDialog } from "./HookTestPanel.jsx";
@@ -107,18 +107,26 @@ function Thumb({ src }) {
 }
 
 export default function GalleryCard({ card, index, accessToken, workspaceId, sources, galleryCards, highlighted }) {
-  const { phase, detail, error, busy, hydrate, analyze, retry, downloadPhase, downloading, download } = useVideoAnalysis({
+  const { phase, detail, error, busy, hydrate, analyze, retry, downloadPhase, downloadError, downloading, download } = useVideoAnalysis({
     accessToken,
     workspaceId,
     videoId: card.id,
   });
   const videoRef = useRef(null);
+  const autoFetchStarted = useRef(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   // Hook-test surfaces. `startOpen` is the paid entry dialog (only offered for
   // analyzed videos with no open test — server truth via card.analyzedBy /
   // card.hookTest, never hover-hydration state); `testOpen` is the full panel.
   const [startOpen, setStartOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  const [showRecreated, setShowRecreated] = useState(true);
+  const [recreatePhase, setRecreatePhase] = useState("idle"); // idle | running | failed
+  const [recreateError, setRecreateError] = useState(null);
+  const [recreationOverride, setRecreationOverride] = useState(null);
+  const recreateTimer = useRef(null);
+  // "Download .zip" — packs the displayed slide set client-side.
+  const [zipState, setZipState] = useState("idle"); // idle | zipping | failed
 
   const handled = phase === "done";
   const working = phase === "checking" || phase === "queued" || phase === "running";
@@ -127,15 +135,75 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
 
   const analysis = detail?.analysis?.data;
   const slideshowImages = displayMediaUrls(detail?.slideshowImages ?? card.slideshowImages);
+  const recreationImages = displayMediaUrls(recreationOverride ?? detail?.recreationImages ?? card.recreationImages);
   const isSlideshow = Boolean(detail?.isSlideshow ?? card.isSlideshow) || slideshowImages.length > 0;
+  const recreating = recreatePhase === "running" || detail?.recreateJob?.status === "queued" || detail?.recreateJob?.status === "running";
+  // Slides shown: recreated deck when it exists and is selected, else the
+  // original slides. Videos with recreations join in — "Original" falls back
+  // to the stored player (slideshowImages is empty there), "Recreated" flips
+  // the stage to the AI slide deck.
+  const carouselImages = showRecreated && recreationImages.length > 0 ? recreationImages : slideshowImages;
   const mediaUrl = isSlideshow ? null : displayMediaUrl(detail?.mediaUrl ?? card.mediaUrl);
   const thumbUrl = displayMediaUrl(card.thumbUrl);
   const keyMoments = Array.isArray(analysis?.keyMoments) ? analysis.keyMoments : [];
+  const zipName = `${showRecreated && recreationImages.length > 0 ? "recreated-slides" : "slides"}-${String(card.id).slice(0, 8)}.zip`;
 
   // Why this video couldn't be scraped (Apify etc.) — the connector attaches a
   // fetchError to cards that have no stored media. Only surface it while there
   // is genuinely no video or slideshow to play; once media appears the icon falls away.
   const scrapeError = card.fetchError && !mediaUrl && slideshowImages.length === 0 ? card.fetchError : null;
+
+  useEffect(() => () => { if (recreateTimer.current) clearInterval(recreateTimer.current); }, []);
+
+  async function startRecreate() {
+    if (recreating) return;
+    setRecreatePhase("running");
+    setRecreateError(null);
+    try {
+      await recreateSlideshow(accessToken, { workspaceId, videoId: card.id });
+    } catch (err) {
+      setRecreateError(friendlyFetchError(err));
+      setRecreatePhase("failed");
+      return;
+    }
+    const started = Date.now();
+    if (recreateTimer.current) clearInterval(recreateTimer.current);
+    recreateTimer.current = setInterval(async () => {
+      // Video recreations add a Gemini slide plan (upload + poll) on top of the
+      // image gens and can run ~7 min server-side — poll past that, not past
+      // the photo-only 4 min.
+      if (Date.now() - started > 8 * 60 * 1000) {
+        clearInterval(recreateTimer.current);
+        setRecreateError({ kind: "failure", retryable: true, message: "Recreation is still running — tap retry." });
+        setRecreatePhase("failed");
+        return;
+      }
+      try {
+        const d = await getVideoDetail(accessToken, { workspaceId, videoId: card.id });
+        if (d.recreationImages?.length) {
+          clearInterval(recreateTimer.current);
+          setRecreationOverride(d.recreationImages);
+          setRecreatePhase("idle");
+          setShowRecreated(true);
+        }
+        if (d.recreateJob?.status === "failed") {
+          clearInterval(recreateTimer.current);
+          setRecreateError({ kind: "failure", retryable: true, message: d.recreateJob.lastError || "Recreation failed." });
+          setRecreatePhase("failed");
+        }
+      } catch { /* keep polling */ }
+    }, 4000);
+  }
+
+  // Photo posts have no Download button — pull every slide from the watch
+  // page as soon as the card mounts so the carousel is what the user sees.
+  useEffect(() => {
+    if (!isSlideshow || slideshowImages.length > 0) return;
+    if (downloadPhase !== "idle") return;
+    if (autoFetchStarted.current) return;
+    autoFetchStarted.current = true;
+    download();
+  }, [isSlideshow, slideshowImages.length, downloadPhase, download]);
 
   function seekAndPlay(sec) {
     setShowAnalysis(false);
@@ -143,6 +211,17 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
     if (v && typeof sec === "number" && Number.isFinite(sec)) {
       v.currentTime = sec;
       v.play?.().catch(() => {});
+    }
+  }
+
+  async function downloadZip() {
+    if (zipState === "zipping" || carouselImages.length === 0) return;
+    setZipState("zipping");
+    try {
+      await downloadSlideshowZip(carouselImages, { fileName: zipName });
+      setZipState("idle");
+    } catch {
+      setZipState("failed");
     }
   }
 
@@ -169,12 +248,13 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
         </span>
       )}
 
-      {/* Thumb stage — once the media is downloaded (signed mediaUrl present)
-          the playable video replaces the thumbnail; the thumbnail is only a
-          placeholder for videos whose storage copy isn't available yet. */}
+      {/* Media stage — never covered by a curtain. Videos show the stored
+          player, slideshows the carousel, everything else the cover thumb;
+          work in progress is a small corner spinner so the preview stays
+          visible (same treatment for both videos and slideshows). */}
       <div className="relative overflow-hidden rounded-t-lg">
-        {slideshowImages.length > 0 ? (
-          <Slideshow images={slideshowImages} />
+        {carouselImages.length > 0 ? (
+          <Slideshow images={carouselImages} />
         ) : mediaUrl ? (
           <video
             ref={videoRef}
@@ -188,45 +268,15 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           <Thumb src={thumbUrl} />
         )}
 
-        {/* Curtain only while there is no playable MP4 or slideshow. Photo
-            posts have no file to download — Download video is omitted. After
-            an MP4 lands, Analyze moves below so native controls stay clickable. */}
-        {ready && !mediaUrl && !isSlideshow && (
+        {(downloading || phase === "queued" || phase === "running" || recreating) && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-            style={{ background: "rgba(20,24,29,0.30)" }}
+            aria-hidden="true"
+            className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full"
+            style={{ background: "rgba(20,24,29,0.7)", color: "#fff" }}
           >
-            <button
-              type="button"
-              onClick={download}
-              disabled={downloading}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
-              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}
-            >
-              <PlayIcon />
-              {downloading ? "Downloading…" : "Download video"}
-            </button>
-            <button
-              type="button"
-              onClick={analyze}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
-              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}
-            >
-              <SparkleIcon />
-              Analyze with Gemini
-            </button>
+            <Spinner />
           </div>
         )}
-
-        {working && !mediaUrl && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: "rgba(20,24,29,0.45)" }}>
-            <div className="flex flex-col items-center gap-1.5 text-white" style={{ ...fB, fontSize: 12 }}>
-              <Spinner />
-              {phase === "checking" ? "Checking…" : "Analyzing…"}
-            </div>
-          </div>
-        )}
-
       </div>
 
       <div className="flex grow flex-col gap-2 p-3">
@@ -283,15 +333,121 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           {card.caption || <em>no caption</em>}
         </p>
 
-        {(mediaUrl || isSlideshow) && ready && (
+        {/* One action row for every card type — download first, then
+            analyze, then the slideshow-only extras. Videos without a stored
+            MP4 and slideshows whose slides are still loading keep the same
+            layout, with the busy state living inside the buttons (never as a
+            curtain over the media). */}
+        <div className="flex flex-wrap items-center gap-2">
+          {!isSlideshow && !mediaUrl && (
+            downloadPhase === "failed" ? (
+              <button
+                type="button"
+                onClick={download}
+                title={downloadError?.message || "Download failed."}
+                className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
+                style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+              >
+                <RefreshIcon />
+                Retry download
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={download}
+                disabled={downloading}
+                className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+                style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+              >
+                <DownloadIcon />
+                {downloading ? "Downloading…" : "Download video"}
+              </button>
+            )
+          )}
+          {carouselImages.length > 0 ? (
+            <button
+              type="button"
+              onClick={downloadZip}
+              disabled={zipState === "zipping"}
+              aria-label={zipState === "failed" ? "Couldn't download slides — tap to retry" : "Download all slides as ZIP"}
+              title={zipState === "failed" ? "Couldn't download the slides — tap to retry" : "Zip the displayed slide set (original or recreated, whichever is showing)"}
+              aria-busy={zipState === "zipping"}
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+            >
+              {zipState === "zipping" ? <Spinner /> : zipState === "failed" ? <WarningIcon /> : <ZipDownloadIcon />}
+              {zipState === "zipping" ? "Zipping…" : "Download .zip"}
+            </button>
+          ) : isSlideshow && downloadPhase === "failed" ? (
+            <button
+              type="button"
+              onClick={download}
+              title={downloadError?.message || "Could not load slides"}
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
+              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+            >
+              <RefreshIcon />
+              Retry download
+            </button>
+          ) : isSlideshow && (
+            <button
+              type="button"
+              disabled
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold disabled:opacity-70"
+              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+            >
+              <Spinner />
+              Downloading…
+            </button>
+          )}
+          {ready && (
+            <button
+              type="button"
+              onClick={analyze}
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
+              style={{ ...fB, fontSize: 12, background: T.ink, color: "#fff" }}
+            >
+              <SparkleIcon />
+              Analyze with Gemini
+            </button>
+          )}
+          {/* Recreate: photo posts restage their stored slides; videos with a
+              stored MP4 become slideshows (Gemini plans the cuts, ffmpeg
+              extracts the frames, gpt-image recreates them without overlays). */}
+          {!working && (isSlideshow ? slideshowImages.length > 0 : Boolean(mediaUrl)) && (
+            <button
+              type="button"
+              onClick={startRecreate}
+              disabled={recreating}
+              title="Costs 2 credits. Gemini picks the cuts, gpt-image-2.5-sunburst recreates them without overlays."
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+            >
+              <SparkleIcon />
+              {recreating ? "Recreating…" : recreationImages.length ? (isSlideshow ? "Recreate again" : "Recreate as slideshow again") : isSlideshow ? "Recreate slideshow" : "Make slideshow"}
+            </button>
+          )}
+        </div>
+        {recreationImages.length > 0 && (
+          <div className="flex items-center gap-1.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
+            <button type="button" onClick={() => setShowRecreated(false)} style={{ fontWeight: showRecreated ? 400 : 700, color: showRecreated ? T.muted : T.ink }}>
+              {isSlideshow ? "Original" : "Video"}
+            </button>
+            <span>/</span>
+            <button type="button" onClick={() => setShowRecreated(true)} style={{ fontWeight: showRecreated ? 700 : 400, color: showRecreated ? T.ink : T.muted }}>
+              {isSlideshow ? "Recreated" : "Slides"}
+            </button>
+          </div>
+        )}
+        {recreatePhase === "failed" && recreateError && (
           <button
             type="button"
-            onClick={analyze}
-            className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
-            style={{ ...fB, fontSize: 12, background: T.ink, color: "#fff" }}
+            onClick={startRecreate}
+            title={recreateError.message}
+            className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold"
+            style={{ ...fB, fontSize: 12, background: "#fff", color: "#B3261E", border: "1px solid #B3261E" }}
           >
-            <SparkleIcon />
-            Analyze with Gemini
+            Retry recreate
           </button>
         )}
         {(mediaUrl || isSlideshow) && (phase === "queued" || phase === "running") && (

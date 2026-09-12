@@ -59,6 +59,12 @@ export default function useVideoAnalysis({ accessToken, workspaceId, videoId }) 
 
   useEffect(() => stopDownloadPolling, [stopDownloadPolling]);
 
+  const previewReady = useCallback((d) => {
+    if (!d) return false;
+    if (d.mediaUrl) return true;
+    return Array.isArray(d.slideshowImages) && d.slideshowImages.length > 0;
+  }, []);
+
   const download = useCallback(async () => {
     if (downloading || downloadPhase === "done") return;
     // Ensure detail (without disturbing the analyze phase machine).
@@ -73,7 +79,7 @@ export default function useVideoAnalysis({ accessToken, workspaceId, videoId }) 
         return;
       }
     }
-    if (d.mediaUrl) {
+    if (previewReady(d)) {
       setDownloadPhase("done");
       return;
     }
@@ -102,7 +108,7 @@ export default function useVideoAnalysis({ accessToken, workspaceId, videoId }) 
         return;
       }
       setDetail(cur);
-      if (cur.mediaUrl) {
+      if (previewReady(cur)) {
         stopDownloadPolling();
         setDownloadPhase("done");
         return;
@@ -113,7 +119,7 @@ export default function useVideoAnalysis({ accessToken, workspaceId, videoId }) 
         setDownloadPhase("failed");
       }
     }, POLL_MS);
-  }, [accessToken, workspaceId, videoId, detail, downloading, downloadPhase, stopDownloadPolling]);
+  }, [accessToken, workspaceId, videoId, detail, downloading, downloadPhase, previewReady, stopDownloadPolling]);
 
   const startPolling = useCallback(
     (initialStatus) => {

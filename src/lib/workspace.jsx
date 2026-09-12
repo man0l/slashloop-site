@@ -65,6 +65,11 @@ export function WorkspaceProvider({ children }) {
   const createWorkspace = useCallback(
     async (name) => {
       const workspace = await apiCreateWorkspace(accessToken, name);
+      queryClient.setQueryData(["workspaces", accessToken], (old) => {
+        const list = Array.isArray(old) ? old : [];
+        if (list.some((w) => w.id === workspace.id)) return list;
+        return [...list, workspace];
+      });
       await queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       setActiveWorkspaceId(workspace.id);
       return workspace;

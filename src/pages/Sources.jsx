@@ -159,6 +159,7 @@ function NewSourceForm({ accessToken, workspaceId, onCreated }) {
             onChange={(e) => setIsSelf(e.target.checked)}
           />
           This is my account
+          <span style={{ ...fM, fontSize: 11, color: T.muted }}>(several allowed)</span>
         </label>
       )}
       <button
@@ -706,7 +707,7 @@ function SourceRowActions({ source, issue, busyAction, doRefresh, toggleActive, 
             border: `1px solid ${source.isSelf ? T.teal : T.line}`,
             opacity: busyAction === "self" ? 0.6 : 1,
           }}
-          title={source.isSelf ? "This is your account — click to unmark" : "Mark as your account"}
+          title={source.isSelf ? "This is your account — click to unmark" : "Mark as your account (you can mark several)"}
         >
           {source.isSelf ? "You" : "Me"}
         </button>

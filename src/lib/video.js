@@ -20,8 +20,10 @@ const QUOTA_CODES = new Set(["gemini_quota", "gemini_rate_limit", "gemini_server
 /**
  * GET /api/videos/:id?workspaceId=... -> VideoDetail
  * { id, thumbUrl, mediaUrl, creatorHandle, caption, views, outlierScore,
+ *   isSlideshow, slideshowImages, recreationImages,
  *   analysis: { id, analysisBasis, backend, model, data } | null,
- *   analysisJob: { jobId, status, lastError, errorCode } | null }
+ *   analysisJob: { jobId, status, lastError, errorCode } | null,
+ *   recreateJob: { jobId, status, lastError } | null }
  */
 export function getVideoDetail(accessToken, { workspaceId, videoId }, signal) {
   const params = new URLSearchParams({ workspaceId });
@@ -49,6 +51,18 @@ export async function analyzeVideo(accessToken, { workspaceId, videoId }) {
  */
 export async function fetchVideoPreview(accessToken, { workspaceId, videoId }) {
   return apiFetch(`/api/videos/${encodeURIComponent(videoId)}/fetch`, {
+    method: "POST",
+    accessToken,
+    body: { workspaceId },
+  });
+}
+
+/**
+ * POST /api/videos/:id/recreate { workspaceId } — queue an OpenRouter
+ * gpt-image-2.5-sunburst restage of a photo carousel (2 credits).
+ */
+export async function recreateSlideshow(accessToken, { workspaceId, videoId }) {
+  return apiFetch(`/api/videos/${encodeURIComponent(videoId)}/recreate`, {
     method: "POST",
     accessToken,
     body: { workspaceId },
