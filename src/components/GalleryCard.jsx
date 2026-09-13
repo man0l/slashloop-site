@@ -14,13 +14,16 @@
 // "View analysis →" opens AnalysisModal with the full details; key-moment
 // chips seek the playing video.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { T, fB, fM, fmt, fmtAge, fmtTime } from "../lib/theme.js";
-import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner, DownloadIcon, ZipDownloadIcon } from "./ui.jsx";
+import { IconButton, WarningIcon, RefreshIcon, SparkleIcon, Spinner, DownloadIcon, ZipDownloadIcon, CalendarIcon } from "./ui.jsx";
 import useVideoAnalysis from "../lib/useVideoAnalysis.js";
 import { displayMediaUrl, displayMediaUrls } from "../lib/mediaUrl.js";
 import { recreateSlideshow, getVideoDetail, friendlyFetchError } from "../lib/video.js";
 import { downloadSlideshowZip } from "../lib/slideshowZip.js";
+import { useToast } from "../lib/toast.jsx";
+import { createApiAdapter } from "../lib/social.js";
+import { ScheduleDrawer } from "../calendar/index.js";
 import AnalysisModal from "./AnalysisModal.jsx";
 import CreatorChip from "./CreatorChip.jsx";
 import HookTestPanel, { StartHookTestDialog } from "./HookTestPanel.jsx";
@@ -127,6 +130,11 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   const recreateTimer = useRef(null);
   // "Download .zip" — packs the displayed slide set client-side.
   const [zipState, setZipState] = useState("idle"); // idle | zipping | failed
+  // "Schedule" — push the recreated deck straight into the post scheduler
+  // (src/calendar drawer, prefilled with the caption + recreation image URLs).
+  const [scheduling, setScheduling] = useState(false);
+  const { showToast } = useToast();
+  const socialAdapter = useMemo(() => createApiAdapter(accessToken), [accessToken]);
 
   const handled = phase === "done";
   const working = phase === "checking" || phase === "queued" || phase === "running";
@@ -427,6 +435,20 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
               {recreating ? "Recreating…" : recreationImages.length ? (isSlideshow ? "Recreate again" : "Recreate as slideshow again") : isSlideshow ? "Recreate slideshow" : "Make slideshow"}
             </button>
           )}
+          {/* Schedule: only for finished recreations — the deck's public slide
+              URLs are what TikTok (photos) / Instagram (carousel) pull. */}
+          {recreationImages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setScheduling(true)}
+              title="Schedule this recreated slideshow to your connected accounts"
+              className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
+              style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
+            >
+              <CalendarIcon />
+              Schedule
+            </button>
+          )}
         </div>
         {recreationImages.length > 0 && (
           <div className="flex items-center gap-1.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
@@ -568,6 +590,27 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
 
       {showAnalysis && detail?.analysis && (
         <AnalysisModal detail={detail} onClose={() => setShowAnalysis(false)} onSeek={seekAndPlay} />
+      )}
+      {scheduling && (
+        <ScheduleDrawer
+          adapter={socialAdapter}
+          mode="create"
+          initialContent={card.caption ?? ""}
+          initialMedia={recreationImages.map((url) => ({ type: "image", url }))}
+          initialDate={new Date()}
+          onClose={() => setScheduling(false)}
+          onSaved={(result) => {
+            setScheduling(false);
+            const skipped = result?.skipped ?? [];
+            showToast(
+              skipped.length
+                ? `Scheduled to ${result.posts} account${result.posts === 1 ? "" : "s"} — skipped ${skipped.map((s) => s.provider).join(", ")} (${skipped[0].message})`
+                : `Scheduled to ${result?.posts ?? 1} account${result?.posts === 1 ? "" : "s"} — see the Calendar`,
+              { type: "success", duration: 6000 },
+            );
+          }}
+          onError={(err) => showToast(err?.message || "Scheduling failed.", { type: "error" })}
+        />
       )}
 
       {startOpen && (

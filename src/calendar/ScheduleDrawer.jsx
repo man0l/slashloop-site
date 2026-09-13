@@ -9,15 +9,19 @@ import { resolveTheme } from "./calendarTheme.js";
 
 const STATE_KEY = { PUBLISHED: "published", PROCESSING: "processing", ERROR: "error", QUEUE: "queued" };
 
-export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, initialDate, onClose, onSaved, onError }) {
+export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, initialDate, initialContent = "", initialMedia, onClose, onSaved, onError }) {
   const theme = resolveTheme(themeOverride);
   const [integrations, setIntegrations] = useState([]);
-  const [content, setContent] = useState(group?.content ?? "");
-  const [mediaRows, setMediaRows] = useState((group?.media ?? []).map((m) => ({ ...m })));
+  const [content, setContent] = useState(group?.content ?? initialContent);
+  const [mediaRows, setMediaRows] = useState((group?.media ?? initialMedia ?? []).map((m) => ({ ...m })));
   const [selected, setSelected] = useState(
     mode === "edit" ? group.posts.map((p) => p.provider) : [],
   );
-  const [when, setWhen] = useState(toLocalInputValue(group?.publishDate ?? nextRoundedQuarterHour(initialDate)));
+  const [when, setWhen] = useState(
+    toLocalInputValue(
+      group?.publishDate ?? Math.floor(nextRoundedQuarterHour(initialDate).getTime() / 1000),
+    ),
+  );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
 
@@ -78,8 +82,9 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
 
     setBusy(true);
     try {
+      let result;
       if (mode === "create") {
-        await adapter.createGroup({
+        result = await adapter.createGroup({
           integrationIds: createSelection,
           content: content.trim(),
           media: mediaRows.filter((row) => row.url),
@@ -88,7 +93,7 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
       } else {
         await adapter.rescheduleGroup(group.groupId, publishDate);
       }
-      onSaved();
+      onSaved(result);
     } catch (err) {
       setProblem(err.message || "Something went wrong.");
       onError?.(err);

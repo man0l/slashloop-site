@@ -128,7 +128,17 @@ export const ZipDownloadIcon = () => (
     <rect x="3" y="4" width="18" height="4" rx="1" />
     <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
     <path d="M12 11v6" />
-    <path d="m9.5 14.5 2.5 2.5 2.5-2.5" />
+    <path d="m9.5 14.5 2.5 2.5 2.5-2.5" />  </svg>
+);
+
+// "Schedule" — a calendar page: push to the post scheduler.
+export const CalendarIcon = () => (
+  <svg {...ICON_PROPS} aria-hidden="true">
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M8 3v4" />
+    <path d="M16 3v4" />
+    <path d="M12 13v3l2 1" />
   </svg>
 );
 

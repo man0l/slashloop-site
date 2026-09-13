@@ -8,6 +8,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { monthGrid, toLocalInputValue, fromLocalInputValue, moveEpochToDay, dayStartEpoch } from "./dates.js";
 import { createMockAdapter } from "./adapter.js";
 import { CalendarView } from "./CalendarView.jsx";
+import { ScheduleDrawer } from "./ScheduleDrawer.jsx";
 
 // ── date math ───────────────────────────────────────────────────────────────
 
@@ -170,5 +171,37 @@ describe("CalendarView", () => {
     expect(groupId).toBe("g1");
     expect(new Date(epoch * 1000).getDate()).toBe(21);
     expect(new Date(epoch * 1000).getHours()).toBe(12); // time of day preserved
+  });
+});
+
+// ── ScheduleDrawer prefill (gallery → scheduler push) ───────────────────────
+
+describe("ScheduleDrawer prefill", () => {
+  it("creates a post from prefilled caption + media (gallery push)", async () => {
+    const adapter = createMockAdapter({});
+    const createGroup = vi.spyOn(adapter, "createGroup");
+    render(
+      <ScheduleDrawer
+        adapter={adapter}
+        mode="create"
+        initialContent="Hello deck"
+        initialMedia={[{ type: "image", url: "https://cdn.example/1.jpg" }]}
+        initialDate={new Date(2026, 8, 13)}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("caption-input").value).toBe("Hello deck");
+    expect(screen.getByDisplayValue("https://cdn.example/1.jpg")).toBeTruthy();
+
+    // Integration list loads asynchronously — wait for the toggles.
+    await waitFor(() => expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByTestId("save-post"));
+
+    await waitFor(() => expect(createGroup).toHaveBeenCalled());
+    expect(createGroup.mock.calls[0][0].content).toBe("Hello deck");
+    expect(createGroup.mock.calls[0][0].media).toEqual([{ type: "image", url: "https://cdn.example/1.jpg" }]);
   });
 });
