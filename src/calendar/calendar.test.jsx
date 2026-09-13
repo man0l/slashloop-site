@@ -344,3 +344,65 @@ describe("CalendarView drafts", () => {
     expect(screen.queryByTestId("drafts-strip")).toBeNull();
   });
 });
+
+// ── Media lightbox (click thumb → full size + download) ─────────────────────
+
+describe("MediaThumbStrip lightbox", () => {
+  function stripWithTwo() {
+    const adapter = createMockAdapter({});
+    render(
+      <ScheduleDrawer
+        adapter={adapter}
+        mode="create"
+        initialContent="x"
+        initialMedia={[
+          { type: "image", url: "https://cdn.example/1.jpg" },
+          { type: "image", url: "https://cdn.example/2.png" },
+        ]}
+        initialDate={new Date(2026, 8, 13)}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+  }
+
+  it("opens the full-size viewer from a thumb and closes on Escape", async () => {
+    stripWithTwo();
+    fireEvent.click(screen.getByRole("img", { name: "media 1" }));
+    expect(screen.getByTestId("media-viewer")).toBeTruthy();
+    expect(screen.getByTestId("media-viewer-img").getAttribute("src")).toBe("https://cdn.example/1.jpg");
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Next media"));
+    expect(screen.getByTestId("media-viewer-img").getAttribute("src")).toBe("https://cdn.example/2.png");
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("media-viewer")).toBeNull();
+  });
+
+  it("downloads the full image as a file", async () => {
+    const objectUrl = "blob:mock";
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => objectUrl), revokeObjectURL: revoke });
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(["bits"])) }));
+    vi.stubGlobal("fetch", fetchMock);
+    const clickSpy = vi.fn();
+    const originalCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag, ...rest) => {
+      const el = originalCreate(tag, ...rest);
+      if (tag === "a") el.click = clickSpy;
+      return el;
+    });
+
+    stripWithTwo();
+    fireEvent.click(screen.getByRole("img", { name: "media 1" }));
+    fireEvent.click(screen.getByTestId("media-download"));
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    const anchor = originalCreate("a");
+    expect(fetchMock).toHaveBeenCalledWith("https://cdn.example/1.jpg");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+});
