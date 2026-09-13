@@ -1,0 +1,36 @@
+# slashloop.dev — open to AI crawlers and assistants by design.
+# Humans: https://slashloop.dev · Agents: https://mcp.slashloop.dev/mcp
+# Site guide for LLMs: https://slashloop.dev/llms.txt
+
+User-agent: *
+Allow: /
+
+# AI training / search crawlers
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+
+# Anthropic
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+
+# Meta
+User-agent: meta-externalagent
+Allow: /
+
+Sitemap: https://slashloop.dev/llms.txt
