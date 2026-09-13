@@ -157,14 +157,15 @@ routes: /oauth/:provider/start | /callback | POST /posts (create group) | GET /p
 ### Workers runtime notes
 
 - Byte uploads: TikTok streams chunk bodies (10MB) and YouTube resumes in batches — one 10–25MB buffer at a time fits Workers memory fine; `R2.get(key, { range })` gives the bytes; `fetch(url, { body: stream })` works (Workers fetch supports streaming request bodies).
-Workers runtime limits (verified against developers.cloudflare.com/workers/platform/limits, 2026-09-12):
+Workers runtime limits (verified against developers.cloudflare.com/workers/platform/limits, 2026-09-12; implementation updates 2026-09-13):
 
 - Subrequests: 50/invocation (free), **10,000** (paid) — a 1GB TikTok video ≈ 100 PUTs, fine on paid even accounting for other calls; on free plan the 50-subrequest cap means keep uploads ≲ 400MB per post.
-- **CPU time: 10ms (free) vs 30s for cron triggers on intervals < 1h (paid).** The engine's work is I/O-bound (uploads, API calls) so CPU is comfortable on paid, but 10ms on free is effectively too little for the engine tick — the cron design realistically assumes **Workers Paid ($5/mo)**.
-- Wall clock per cron invocation: 15 min — plenty, but bound the batch size per tick (process N due posts, leave the rest for the next minute) so a pathological batch can't hit the cap mid-upload.
+- **CPU time: 10ms (free) vs 30s for cron triggers on intervals < 1h (paid).** The engine's work is I/O-bound (uploads, API calls) so CPU is comfortable on paid, but 10ms on free is tight — the shipped implementation runs the tick on the account's **existing `*/2` trigger** (chained after the video-recreate stepper in `scheduled()`) because the account is on Free and a dedicated `*/1` cron blew the **5-cron-triggers account cap** (CF error 10072, hit live 2026-09-13). Post-latency budget is therefore ≤2 min. Token refresh rides inside every tick (one indexed LIMIT-5 query) instead of its own daily cron. Upgrade to Workers Paid for the 1-minute cadence + comfortable CPU.
+- Wall clock per cron invocation: 15 min — plenty, but bound the batch size per tick (engine claims ≤8 posts/tick) so a pathological batch can't hit the cap mid-upload.
 - Memory 128MB/isolate — one 10–25MB chunk buffer at a time fits easily.
 - `Buffer`/Web streams available; `sharp` is not — do image transforms client-side (we already have the slideshow pipeline) or with Cloudflare Images/Workers AI if ever needed.
 - Cron minimum interval is 1 minute, accuracy ±1 min, and config changes take up to 15 min to propagate after deploy (deploy-time caveat, not runtime).
+- Ops note: `bunx wrangler` on this Windows/Git-Bash setup silently no-ops some remote commands (stdin EBADF); use `node_modules/.bin/wrangler.exe` directly, or the REST API with the wrangler OAuth token for D1.
 
 ## 5. The unavoidable part: platform app registration
 
