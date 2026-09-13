@@ -70,10 +70,10 @@ describe("createMockAdapter", () => {
 
   it("filters groups by the requested range", async () => {
     const adapter = seeded();
-    expect(await adapter.listGroups(noon(13), noon(13))).toHaveLength(0);
+    expect((await adapter.listGroups(noon(13), noon(13))).groups).toHaveLength(0);
     const inRange = await adapter.listGroups(noon(13), noon(15));
-    expect(inRange).toHaveLength(1);
-    expect(inRange[0].groupId).toBe("g1");
+    expect(inRange.groups).toHaveLength(1);
+    expect(inRange.groups[0].groupId).toBe("g1");
   });
 
   it("creates, reschedules, and deletes groups", async () => {
@@ -84,14 +84,14 @@ describe("createMockAdapter", () => {
       media: [],
       publishDate: noon(20),
     });
-    expect((await adapter.listGroups(noon(19), noon(21)))).toHaveLength(1);
+    expect((await adapter.listGroups(noon(19), noon(21))).groups).toHaveLength(1);
 
     await adapter.rescheduleGroup(groupId, noon(22));
     const moved = await adapter.listGroups(noon(21), noon(23));
-    expect(moved[0].publishDate).toBe(noon(22));
+    expect(moved.groups[0].publishDate).toBe(noon(22));
 
     await adapter.deleteGroup(groupId);
-    expect(await adapter.listGroups(noon(21), noon(23))).toHaveLength(0);
+    expect((await adapter.listGroups(noon(21), noon(23))).groups).toHaveLength(0);
   });
 
   it("rejects rescheduling a processing group with a 409", async () => {
@@ -174,9 +174,9 @@ describe("CalendarView", () => {
   });
 });
 
-// ── ScheduleDrawer prefill (gallery → scheduler push) ───────────────────────
+// ── ScheduleDrawer: media strip, prefill, drafts ────────────────────────────
 
-describe("ScheduleDrawer prefill", () => {
+describe("ScheduleDrawer media strip + prefill", () => {
   it("creates a post from prefilled caption + media (gallery push)", async () => {
     const adapter = createMockAdapter({});
     const createGroup = vi.spyOn(adapter, "createGroup");
@@ -193,7 +193,7 @@ describe("ScheduleDrawer prefill", () => {
     );
 
     expect(screen.getByTestId("caption-input").value).toBe("Hello deck");
-    expect(screen.getByDisplayValue("https://cdn.example/1.jpg")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "media 1" }).getAttribute("src")).toBe("https://cdn.example/1.jpg");
 
     // Integration list loads asynchronously — wait for the toggles.
     await waitFor(() => expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0));
@@ -203,5 +203,144 @@ describe("ScheduleDrawer prefill", () => {
     await waitFor(() => expect(createGroup).toHaveBeenCalled());
     expect(createGroup.mock.calls[0][0].content).toBe("Hello deck");
     expect(createGroup.mock.calls[0][0].media).toEqual([{ type: "image", url: "https://cdn.example/1.jpg" }]);
+  });
+
+  it("removes a thumb with its ✕ button", () => {
+    const adapter = createMockAdapter({});
+    render(
+      <ScheduleDrawer
+        adapter={adapter}
+        mode="create"
+        initialContent="x"
+        initialMedia={[
+          { type: "image", url: "https://cdn.example/1.jpg" },
+          { type: "image", url: "https://cdn.example/2.jpg" },
+        ]}
+        initialDate={new Date(2026, 8, 13)}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+    fireEvent.click(screen.getByLabelText("Remove media 1"));
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+    expect(screen.getByRole("img", { name: "media 1" }).getAttribute("src")).toBe("https://cdn.example/2.jpg");
+  });
+
+  it("uploads picked files through the adapter and appends the returned url", async () => {
+    const adapter = createMockAdapter({});
+    const uploadMedia = vi.spyOn(adapter, "uploadMedia").mockResolvedValue({ url: "https://cdn.example/social/new.jpg", type: "image" });
+    render(
+      <ScheduleDrawer
+        adapter={adapter}
+        mode="create"
+        initialContent="x"
+        initialMedia={[]}
+        initialDate={new Date(2026, 8, 13)}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    const input = screen.getByLabelText("Upload media").closest("div").parentElement.querySelector('input[type="file"]');
+    await waitFor(async () => {
+      fireEvent.change(input, { target: { files: [new File(["bits"], "slide.jpg", { type: "image/jpeg" })] } });
+    });
+    await waitFor(() => expect(uploadMedia).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("img", { name: "media 1" }).getAttribute("src")).toBe("https://cdn.example/social/new.jpg"));
+  });
+});
+
+describe("ScheduleDrawer drafts", () => {
+  function draftGroup() {
+    return {
+      groupId: "d1",
+      publishDate: 0,
+      content: "Draft body",
+      media: [{ type: "image", url: "https://cdn.example/1.jpg" }],
+      state: "draft",
+      posts: [{ id: "p1", provider: "tiktok", state: "DRAFT", releaseUrl: null, error: null }],
+    };
+  }
+
+  it("saves caption/media and keeps the draft when no date is set", async () => {
+    const adapter = createMockAdapter({ drafts: [draftGroup()] });
+    const updateGroup = vi.spyOn(adapter, "updateGroup");
+    const scheduleDraft = vi.spyOn(adapter, "scheduleDraft");
+    render(
+      <ScheduleDrawer adapter={adapter} mode="draft" group={draftGroup()} initialDate={new Date(2026, 8, 13)} onClose={() => {}} onSaved={() => {}} />,
+    );
+    fireEvent.click(screen.getByTestId("save-draft"));
+    await waitFor(() => expect(updateGroup).toHaveBeenCalled());
+    expect(updateGroup.mock.calls[0][1].content).toBe("Draft body");
+    expect(scheduleDraft).not.toHaveBeenCalled();
+  });
+
+  it("schedules a draft when a date is set (DRAFT → QUEUE)", async () => {
+    const adapter = createMockAdapter({ drafts: [draftGroup()] });
+    const updateGroup = vi.spyOn(adapter, "updateGroup");
+    const scheduleDraft = vi.spyOn(adapter, "scheduleDraft");
+    render(
+      <ScheduleDrawer adapter={adapter} mode="draft" group={draftGroup()} initialDate={new Date(2026, 8, 13)} onClose={() => {}} onSaved={() => {}} />,
+    );
+    fireEvent.change(screen.getByTestId("when-input"), { target: { value: "2026-09-20T10:30" } });
+    fireEvent.click(screen.getByTestId("save-post"));
+    await waitFor(() => expect(scheduleDraft).toHaveBeenCalled());
+    expect(updateGroup).toHaveBeenCalled();
+    const epoch = scheduleDraft.mock.calls[0][1];
+    expect(new Date(epoch * 1000).getDate()).toBe(20);
+  });
+});
+
+// ── CalendarView drafts ─────────────────────────────────────────────────────
+
+describe("CalendarView drafts", () => {
+  function seedWithDraft() {
+    return createMockAdapter({
+      drafts: [
+        {
+          groupId: "d1",
+          publishDate: 0,
+          content: "Untitled launch",
+          media: [{ type: "image", url: "https://cdn.example/1.jpg" }],
+          state: "draft",
+          posts: [{ id: "dp1", provider: "tiktok", state: "DRAFT", releaseUrl: null, error: null }],
+        },
+      ],
+    });
+  }
+
+  it("shows the N-drafts strip for undated drafts and opens the draft in the drawer", async () => {
+    render(<CalendarView adapter={seedWithDraft()} initialDate={new Date(2026, 8, 13)} />);
+    const strip = await screen.findByTestId("drafts-strip");
+    expect(strip.textContent).toContain("1 draft");
+
+    fireEvent.click(screen.getByRole("button", { name: /1 draft/ })); // expand
+    fireEvent.click(screen.getByTitle("Untitled launch")); // open the draft card
+    expect(screen.getByTestId("schedule-drawer")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Draft" })).toBeTruthy();
+    expect(screen.getByTestId("caption-input").value).toBe("Untitled launch");
+    expect(screen.getByRole("img", { name: "media 1" }).getAttribute("src")).toBe("https://cdn.example/1.jpg");
+  });
+
+  it("does not show the drafts strip when there are none", async () => {
+    render(
+      <CalendarView
+        adapter={createMockAdapter({
+          groups: [
+            {
+              groupId: "g1",
+              publishDate: Math.floor(new Date(2026, 8, 14, 12).getTime() / 1000),
+              content: "Launch clip",
+              media: [],
+              state: "queued",
+              posts: [{ id: "p1", provider: "tiktok", state: "QUEUE", releaseUrl: null, error: null }],
+            },
+          ],
+        })}
+        initialDate={new Date(2026, 8, 13)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTitle("Launch clip")).toBeTruthy());
+    expect(screen.queryByTestId("drafts-strip")).toBeNull();
   });
 });

@@ -1,26 +1,36 @@
-// Side drawer for creating and editing scheduled posts. Same reuse contract
-// as CalendarView: adapter in, callbacks out, no app imports. Styling comes
-// from the shared theme prop (./calendarTheme.js defaults = host palette).
+// Side drawer for creating, editing, and scheduling posts. Same reuse
+// contract as CalendarView: adapter in, callbacks out, no app imports.
+// Styling comes from the shared theme prop (./calendarTheme.js defaults =
+// host palette).
+//
+// Modes:
+//   create — composer; media via the upload strip (no direct URLs)
+//   edit   — a scheduled group: edit caption/media, move the time, delete
+//   draft  — a DRAFT group (possibly undated): same editing plus
+//            "Save draft" (keeps it a draft) and "Schedule" (sets the date
+//            and queues it — date required for undated drafts)
 
 import { useEffect, useMemo, useState } from "react";
 import { toLocalInputValue, fromLocalInputValue } from "./dates.js";
 import { providerMeta } from "./providerMeta.js";
 import { resolveTheme } from "./calendarTheme.js";
+import { MediaThumbStrip } from "./MediaThumbStrip.jsx";
 
-const STATE_KEY = { PUBLISHED: "published", PROCESSING: "processing", ERROR: "error", QUEUE: "queued" };
+const STATE_KEY = { PUBLISHED: "published", PROCESSING: "processing", ERROR: "error", QUEUE: "queued", DRAFT: "draft" };
 
 export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, initialDate, initialContent = "", initialMedia, onClose, onSaved, onError }) {
   const theme = resolveTheme(themeOverride);
   const [integrations, setIntegrations] = useState([]);
   const [content, setContent] = useState(group?.content ?? initialContent);
   const [mediaRows, setMediaRows] = useState((group?.media ?? initialMedia ?? []).map((m) => ({ ...m })));
-  const [selected, setSelected] = useState(
-    mode === "edit" ? group.posts.map((p) => p.provider) : [],
-  );
+  const [selected, setSelected] = useState(mode === "edit" || mode === "draft" ? (group?.posts ?? []).map((p) => p.provider) : []);
+  // Undated drafts start with an empty datetime — a date is required to schedule.
   const [when, setWhen] = useState(
-    toLocalInputValue(
-      group?.publishDate ?? Math.floor(nextRoundedQuarterHour(initialDate).getTime() / 1000),
-    ),
+    group && group.publishDate
+      ? toLocalInputValue(group.publishDate)
+      : mode === "create"
+        ? toLocalInputValue(Math.floor(nextRoundedQuarterHour(initialDate).getTime() / 1000))
+        : "",
   );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
@@ -38,10 +48,7 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
     };
   }, [adapter, onError]);
 
-  const createSelection = useMemo(
-    () => (mode === "create" ? selected : []),
-    [mode, selected],
-  );
+  const createSelection = useMemo(() => (mode === "create" ? selected : []), [mode, selected]);
 
   const input = {
     fontFamily: "'Inter', sans-serif",
@@ -72,13 +79,17 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
     color: "#fff",
   };
 
+  const publishDate = when ? fromLocalInputValue(when) : null;
+
   async function save() {
     setProblem(null);
-    if (!content.trim()) return setProblem("Write a caption first.");
+    if (!content.trim() && !mediaRows.filter((row) => row.url).length) {
+      return setProblem("Write a caption or add media first.");
+    }
     if (mode === "create" && !createSelection.length) return setProblem("Pick at least one connected account.");
-
-    const publishDate = fromLocalInputValue(when);
-    if (publishDate === null) return setProblem("Pick a date and time.");
+    if ((mode === "edit" || mode === "draft") && !when) return setProblem("Pick a date and time first.");
+    const date = publishDate;
+    if (mode !== "draft" && (date === null || !when)) return setProblem("Pick a date and time.");
 
     setBusy(true);
     try {
@@ -88,14 +99,38 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
           integrationIds: createSelection,
           content: content.trim(),
           media: mediaRows.filter((row) => row.url),
-          publishDate,
+          publishDate: date,
         });
+      } else if (mode === "draft") {
+        await adapter.updateGroup(group.groupId, { content: content.trim(), media: mediaRows.filter((row) => row.url) });
+        if (date !== null) {
+          await adapter.scheduleDraft(group.groupId, date);
+          result = { scheduled: true, publishDate: date };
+        } else {
+          result = { draftSaved: true };
+        }
       } else {
-        await adapter.rescheduleGroup(group.groupId, publishDate);
+        await adapter.updateGroup(group.groupId, { content: content.trim(), media: mediaRows.filter((row) => row.url) });
+        if (date !== null && date !== group.publishDate) await adapter.rescheduleGroup(group.groupId, date);
+        result = { updated: true };
       }
       onSaved(result);
     } catch (err) {
       setProblem(err.message || "Something went wrong.");
+      onError?.(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDraftOnly() {
+    setProblem(null);
+    setBusy(true);
+    try {
+      await adapter.updateGroup(group.groupId, { content: content.trim(), media: mediaRows.filter((row) => row.url) });
+      onSaved({ draftSaved: true });
+    } catch (err) {
+      setProblem(err.message || "Could not save the draft.");
       onError?.(err);
     } finally {
       setBusy(false);
@@ -107,7 +142,7 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
     setBusy(true);
     try {
       await adapter.deleteGroup(group.groupId);
-      onSaved();
+      onSaved({ deleted: true });
     } catch (err) {
       setProblem(err.message || "Could not delete this post.");
       onError?.(err);
@@ -116,26 +151,26 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
     }
   }
 
+  const heading = mode === "create" ? "New scheduled post" : mode === "draft" ? "Draft" : "Scheduled post";
+
   return (
     <aside
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col p-4 shadow-xl"
       style={{ background: theme.card, borderLeft: `1px solid ${theme.line}` }}
       data-testid="schedule-drawer"
-      aria-label={mode === "create" ? "New scheduled post" : "Scheduled post details"}
+      aria-label={heading}
     >
       <header className="flex items-center justify-between">
-        <h3 style={{ fontFamily: "'Archivo', sans-serif", fontWeight: 800, fontSize: 17, color: theme.ink }}>
-          {mode === "create" ? "New scheduled post" : "Scheduled post"}
-        </h3>
+        <h3 style={{ fontFamily: "'Archivo', sans-serif", fontWeight: 800, fontSize: 17, color: theme.ink }}>{heading}</h3>
         <button type="button" onClick={onClose} style={{ color: theme.muted }} className="rounded p-1 hover:opacity-70" aria-label="Close">
           ✕
         </button>
       </header>
 
       <div className="mt-4 flex flex-1 flex-col gap-4 overflow-y-auto">
-        {mode === "edit" && (
+        {mode !== "create" && (
           <div className="flex flex-col gap-1.5">
-            {group.posts.map((post) => {
+            {(group?.posts ?? []).map((post) => {
               const meta = providerMeta(post.provider);
               const state = theme.state[STATE_KEY[post.state] ?? "queued"];
               return (
@@ -166,9 +201,9 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
                 </div>
               );
             })}
-            {group.posts.some((post) => post.error) && (
+            {(group?.posts ?? []).some((post) => post.error) && (
               <p className="rounded-md px-2.5 py-1.5" style={{ background: "#FDECEA", border: "1px solid #F3B5AE", color: "#7A1F17", fontFamily: "'Inter', sans-serif", fontSize: 12 }}>
-                {group.posts.find((post) => post.error)?.error}
+                {(group?.posts ?? []).find((post) => post.error)?.error}
               </p>
             )}
           </div>
@@ -179,7 +214,7 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
           <textarea
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            rows={5}
+            rows={4}
             maxLength={2000}
             style={{ ...input, padding: 8 }}
             onFocus={(event) => (event.target.style.borderColor = theme.signal)}
@@ -189,32 +224,19 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
           />
         </label>
 
-        {mode === "create" && (
-          <div className="flex flex-col gap-1" style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: theme.muted }}>
-            <span>Media URLs (optional — must be public links)</span>
-            {mediaRows.map((row, index) => (
-              <div key={index} className="flex gap-1">
-                <input
-                  value={row.url}
-                  onChange={(event) =>
-                    setMediaRows((rows) => rows.map((r, i) => (i === index ? { ...r, url: event.target.value, type: event.target.value.toLowerCase().includes(".mp4") ? "video" : "image" } : r)))
-                  }
-                  placeholder="https://…mp4 or image URL"
-                  style={{ ...input, flex: 1, fontSize: 12, padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace" }}
-                />
-                <button type="button" onClick={() => setMediaRows((rows) => rows.filter((_, i) => i !== index))} style={{ color: theme.muted }} className="px-2 hover:text-red-500">
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button type="button" onClick={() => setMediaRows((rows) => [...rows, { type: "image", url: "" }])} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: theme.signal }} className="self-start hover:underline">
-              + Add media
-            </button>
-          </div>
-        )}
+        <div className="flex flex-col gap-1" style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: theme.muted }}>
+          <span>Media — drag to reorder, ✕ removes, + uploads (stored in R2)</span>
+          <MediaThumbStrip
+            media={mediaRows}
+            onChange={setMediaRows}
+            uploadMedia={adapter.uploadMedia}
+            theme={theme}
+            onError={(err) => setProblem(err.message || "Upload failed.")}
+          />
+        </div>
 
         <label className="flex flex-col gap-1" style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: theme.muted }}>
-          Publish at (your local time — stored as UTC)
+          {mode === "draft" ? "Publish at (empty = stays a draft)" : "Publish at (your local time — stored as UTC)"}
           <input
             type="datetime-local"
             value={when}
@@ -262,7 +284,7 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
       </div>
 
       <footer className="mt-3 flex items-center justify-between gap-2 pt-3" style={{ borderTop: `1px solid ${theme.line}` }}>
-        {mode === "edit" ? (
+        {group ? (
           <button type="button" onClick={remove} disabled={busy} style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#7A1F17" }} className="hover:opacity-70 disabled:opacity-50">
             Delete
           </button>
@@ -273,8 +295,13 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
           <button type="button" onClick={onClose} style={ghostButton} className="hover:opacity-80">
             Cancel
           </button>
+          {mode === "draft" && (
+            <button type="button" onClick={saveDraftOnly} disabled={busy} style={ghostButton} className="hover:opacity-80 disabled:opacity-50" data-testid="save-draft">
+              Save draft
+            </button>
+          )}
           <button type="button" onClick={save} disabled={busy} style={ctaButton} className="hover:opacity-90 disabled:opacity-50" data-testid="save-post">
-            {busy ? "Saving…" : mode === "create" ? "Schedule" : "Save time"}
+            {busy ? "Saving…" : mode === "create" ? "Schedule" : mode === "draft" ? "Schedule" : "Save"}
           </button>
         </div>
       </footer>

@@ -5,6 +5,8 @@
 
 import { apiFetch } from "./http.js";
 
+const MCP_URL = (import.meta.env.VITE_MCP_URL ?? "").replace(/\/$/, "");
+
 export function createApiAdapter(accessToken) {
   return {
     async listIntegrations() {
@@ -25,7 +27,39 @@ export function createApiAdapter(accessToken) {
 
     async listGroups(from, to) {
       const data = await apiFetch(`/api/social/posts?from=${from}&to=${to}`, { accessToken });
-      return data.groups ?? [];
+      return { groups: data.groups ?? [], drafts: data.drafts ?? [] };
+    },
+
+    /** apiFetch JSON-stringifies bodies, so multipart goes through raw fetch.
+     *  The worker answers { url, type } — url is the stable public /thumbs
+     *  link platforms pull later. */
+    async uploadMedia(file) {
+      if (!MCP_URL) throw new Error("VITE_MCP_URL is not set.");
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${MCP_URL}/api/social/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
+      });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          detail = (await res.json())?.error ?? "";
+        } catch {
+          /* not JSON */
+        }
+        const message =
+          detail === "too_large"
+            ? "That file is too large — images up to 20 MB, videos up to 95 MB."
+            : detail === "unsupported_type"
+              ? "Only JPG / PNG / WebP images and MP4 / MOV videos are supported."
+              : detail || `Upload failed (${res.status}).`;
+        const err = new Error(message);
+        err.status = res.status;
+        throw err;
+      }
+      return res.json();
     },
 
     async createGroup(input) {
@@ -36,7 +70,8 @@ export function createApiAdapter(accessToken) {
           integrationIds: input.integrationIds,
           content: input.content,
           media: input.media ?? [],
-          publishDate: input.publishDate,
+          ...(input.publishDate !== undefined ? { publishDate: input.publishDate } : {}),
+          ...(input.draft ? { draft: true } : {}),
           settings: input.settings ?? {},
         },
       });
@@ -47,6 +82,22 @@ export function createApiAdapter(accessToken) {
         method: "PATCH",
         accessToken,
         body: { publishDate },
+      });
+    },
+
+    async updateGroup(groupId, input) {
+      await apiFetch(`/api/social/posts?id=${encodeURIComponent(groupId)}`, {
+        method: "PATCH",
+        accessToken,
+        body: { content: input.content, media: input.media },
+      });
+    },
+
+    async scheduleDraft(groupId, publishDate) {
+      await apiFetch(`/api/social/posts?id=${encodeURIComponent(groupId)}`, {
+        method: "PATCH",
+        accessToken,
+        body: { state: "QUEUE", publishDate },
       });
     },
 

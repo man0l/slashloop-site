@@ -24,6 +24,8 @@ export function CalendarView({ adapter, initialDate = new Date(), onError, theme
   const theme = resolveTheme(themeOverride);
   const [cursor, setCursor] = useState({ year: initialDate.getFullYear(), month: initialDate.getMonth() });
   const [groups, setGroups] = useState([]);
+  const [drafts, setDrafts] = useState([]);
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dragOverIso, setDragOverIso] = useState(null);
   const [drawer, setDrawer] = useState(null); // {mode:'create', date} | {mode:'edit', group}
@@ -40,7 +42,9 @@ export function CalendarView({ adapter, initialDate = new Date(), onError, theme
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setGroups(await adapter.listGroups(range[0], range[1]));
+      const { groups: rows, drafts: draftRows } = await adapter.listGroups(range[0], range[1]);
+      setGroups(rows);
+      setDrafts(draftRows);
     } catch (err) {
       onError?.(err);
     } finally {
@@ -52,16 +56,21 @@ export function CalendarView({ adapter, initialDate = new Date(), onError, theme
     load();
   }, [load]);
 
+  /** Undated drafts (publishDate 0) can't sit on a day — they surface as the
+   *  "N drafts" strip; dated drafts render as chips on their day. */
+  const undatedDrafts = useMemo(() => drafts.filter((group) => !group.publishDate), [drafts]);
+  const datedDrafts = useMemo(() => drafts.filter((group) => Boolean(group.publishDate)), [drafts]);
+
   const byIso = useMemo(() => {
     const map = new Map();
-    for (const group of groups) {
+    for (const group of [...groups, ...datedDrafts]) {
       const date = new Date(group.publishDate * 1000);
       const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
       if (!map.has(iso)) map.set(iso, []);
       map.get(iso).push(group);
     }
     return map;
-  }, [groups]);
+  }, [groups, datedDrafts]);
 
   async function handleDrop(iso, cellDate) {
     setDragOverIso(null);
@@ -72,13 +81,17 @@ export function CalendarView({ adapter, initialDate = new Date(), onError, theme
     const target = moveEpochToDay(group.publishDate, cellDate);
     if (target === group.publishDate) return;
 
-    const previous = groups;
-    setGroups((rows) => rows.map((row) => (row.groupId === group.groupId ? { ...row, publishDate: target } : row)));
+    const inDrafts = drafts.some((row) => row.groupId === group.groupId);
+    const previous = inDrafts ? drafts : groups;
+    const optimistic = (rows) => rows.map((row) => (row.groupId === group.groupId ? { ...row, publishDate: target } : row));
+    if (inDrafts) setDrafts(optimistic);
+    else setGroups(optimistic);
     try {
       await adapter.rescheduleGroup(group.groupId, target);
       await load();
     } catch (err) {
-      setGroups(previous); // chip rolls back — mid-publish (409) or API error
+      if (inDrafts) setDrafts(previous); // chip rolls back — mid-publish (409) or API error
+      else setGroups(previous);
       onError?.(err);
     }
   }
@@ -140,6 +153,59 @@ export function CalendarView({ adapter, initialDate = new Date(), onError, theme
         </button>
       </header>
 
+      {/* Undated drafts can't sit on a day — the "N drafts" strip opens the
+          draft list (same thumbs/X/upload UI once a draft is opened). */}
+      {undatedDrafts.length > 0 && (
+        <div data-testid="drafts-strip">
+          <button
+            type="button"
+            onClick={() => setDraftsOpen((open) => !open)}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 hover:opacity-80"
+            style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 12,
+              border: `1px dashed ${theme.state.draft.border}`,
+              background: theme.state.draft.bg,
+              color: theme.state.draft.text,
+            }}
+          >
+            {draftsOpen ? "▾" : "▸"} {undatedDrafts.length} draft{undatedDrafts.length === 1 ? "" : "s"} (no date yet)
+          </button>
+          {draftsOpen && (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1" data-testid="drafts-list">
+              {undatedDrafts.map((draft) => {
+                const thumb = draft.media?.[0];
+                return (
+                  <button
+                    key={draft.groupId}
+                    type="button"
+                    onClick={() => setDrawer({ mode: "draft", group: draft })}
+                    className="flex w-40 shrink-0 items-center gap-2 rounded-md p-1.5 text-left hover:opacity-85"
+                    style={{ border: `1px solid ${theme.line}`, background: theme.card }}
+                    title={draft.content || "Draft"}
+                  >
+                    {thumb ? (
+                      thumb.type === "video" ? (
+                        <video src={thumb.url} muted playsInline preload="metadata" className="h-14 w-10 shrink-0 rounded object-cover" />
+                      ) : (
+                        <img src={thumb.url} alt="" loading="lazy" className="h-14 w-10 shrink-0 rounded object-cover" />
+                      )
+                    ) : (
+                      <span className="flex h-14 w-10 shrink-0 items-center justify-center rounded text-lg" style={{ background: theme.paper, color: theme.muted }}>
+                        ✎
+                      </span>
+                    )}
+                    <span className="truncate" style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: theme.ink }}>
+                      {draft.content || "(no caption)"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-7 gap-px text-center" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: theme.muted }}>
         {WEEKDAY_LABELS.map((label) => (
           <div key={label} className="py-1">
@@ -195,7 +261,7 @@ export function CalendarView({ adapter, initialDate = new Date(), onError, theme
                   theme={theme}
                   onClick={(event) => {
                     event.stopPropagation();
-                    setDrawer({ mode: "edit", group });
+                    setDrawer({ mode: group.state === "draft" ? "draft" : "edit", group });
                   }}
                   onDragStart={(event) => {
                     dragGroupRef.current = group;
@@ -238,7 +304,7 @@ function GroupChip({ group, theme, onClick, onDragStart }) {
       onClick={onClick}
       style={{
         background: state.bg,
-        border: `1px solid ${state.border}`,
+        border: `${state.dashed ? "dashed" : "solid"} 1px ${state.border}`,
         color: state.text,
         fontFamily: "'IBM Plex Mono', monospace",
         fontSize: 11,

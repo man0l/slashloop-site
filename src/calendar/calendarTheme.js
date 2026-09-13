@@ -20,6 +20,7 @@ export const calendarTheme = {
     processing: { label: "Publishing…", bg: "#FFF8E6", border: "#EAD39B", text: "#7A5B00", dot: "#D9A400" },
     published: { label: "Published", bg: "#E8F3F1", border: "#9FCFC8", text: "#0F7B6C", dot: "#0F7B6C" },
     error: { label: "Failed", bg: "#FDECEA", border: "#F3B5AE", text: "#7A1F17", dot: "#D9534F" },
+    draft: { label: "Draft", bg: "#F1F2EF", border: "#C9CCC5", text: "#6E7681", dot: "#9AA0A8", dashed: true },
   },
 };
 

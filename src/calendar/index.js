@@ -9,6 +9,7 @@
 
 export { CalendarView } from "./CalendarView.jsx";
 export { ScheduleDrawer } from "./ScheduleDrawer.jsx";
+export { MediaThumbStrip } from "./MediaThumbStrip.jsx";
 export { createMockAdapter } from "./adapter.js";
 export { providerMeta } from "./providerMeta.js";
 export { calendarTheme, resolveTheme } from "./calendarTheme.js";
