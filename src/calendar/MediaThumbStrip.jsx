@@ -16,6 +16,7 @@
 // is the uploadMedia(file) function passed as a prop.
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /** Blob-download so the browser saves instead of navigating. The media
  *  hosts (R2 public domain) send CORS headers — the client-side slideshow
@@ -195,72 +196,80 @@ export function MediaThumbStrip({ media, onChange, uploadMedia, theme, onError }
         onChange={(event) => handleFiles(event.target.files)}
       />
 
-      {viewer !== null && media[viewer] && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(10,12,15,0.88)" }}
-          onClick={() => setViewer(null)}
-          data-testid="media-viewer"
-          role="dialog"
-          aria-label={`Media ${viewer + 1} of ${media.length}`}
-        >
-          <div className="relative flex max-h-[90vh] max-w-[92vw] flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
-            {media[viewer].type === "video" ? (
-              <video src={media[viewer].url} controls autoPlay playsInline className="max-h-[75vh] max-w-[90vw] rounded-lg" />
-            ) : (
-              <img
-                src={media[viewer].url}
-                alt={`media ${viewer + 1} full size`}
-                className="max-h-[75vh] max-w-[90vw] rounded-lg object-contain"
-                data-testid="media-viewer-img"
-              />
-            )}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setViewer((current) => (current - 1 + media.length) % media.length)}
-                disabled={media.length < 2}
-                aria-label="Previous media"
-                className="rounded-md px-3 py-1.5 text-sm text-white hover:opacity-80 disabled:opacity-40"
-                style={{ background: "rgba(255,255,255,0.12)", fontFamily: "'Inter', sans-serif" }}
-              >
-                ←
-              </button>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-                {viewer + 1} / {media.length}
-              </span>
-              <button
-                type="button"
-                onClick={() => setViewer((current) => (current + 1) % media.length)}
-                disabled={media.length < 2}
-                aria-label="Next media"
-                className="rounded-md px-3 py-1.5 text-sm text-white hover:opacity-80 disabled:opacity-40"
-                style={{ background: "rgba(255,255,255,0.12)", fontFamily: "'Inter', sans-serif" }}
-              >
-                →
-              </button>
-              <button
-                type="button"
-                onClick={() => downloadMedia(media[viewer].url, mediaFileName(media[viewer].url, viewer))}
-                data-testid="media-download"
-                className="rounded-md px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
-                style={{ background: theme.signal, fontFamily: "'Inter', sans-serif" }}
-              >
-                Download
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewer(null)}
-                aria-label="Close preview"
-                className="rounded-md px-3 py-1.5 text-sm text-white hover:opacity-80"
-                style={{ background: "rgba(255,255,255,0.12)", fontFamily: "'Inter', sans-serif" }}
-              >
-                Close
-              </button>
+      {/* Portal to document.body: the drawer (fixed + z-index) is a stacking
+          context, and page content would otherwise paint over the viewer.
+          z-200 clears every app surface (modals/toasts are z-50). */}
+      {viewer !== null &&
+        media[viewer] &&
+        createPortal(
+          <div
+            className="fixed inset-0 flex items-center justify-center"
+            style={{ background: "rgba(10,12,15,0.92)", zIndex: 200 }}
+            onClick={() => setViewer(null)}
+            data-testid="media-viewer"
+            role="dialog"
+            aria-label={`Media ${viewer + 1} of ${media.length}`}
+          >
+            <button
+              type="button"
+              onClick={() => setViewer(null)}
+              aria-label="Close preview"
+              title="Close (Esc)"
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-white hover:opacity-80"
+              style={{ background: "rgba(255,255,255,0.15)" }}
+              data-testid="media-viewer-close"
+            >
+              ✕
+            </button>
+            <div className="relative flex max-h-[90vh] max-w-[92vw] flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
+              {media[viewer].type === "video" ? (
+                <video src={media[viewer].url} controls autoPlay playsInline className="max-h-[75vh] max-w-[90vw] rounded-lg" />
+              ) : (
+                <img
+                  src={media[viewer].url}
+                  alt={`media ${viewer + 1} full size`}
+                  className="max-h-[75vh] max-w-[90vw] rounded-lg object-contain"
+                  data-testid="media-viewer-img"
+                />
+              )}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setViewer((current) => (current - 1 + media.length) % media.length)}
+                  disabled={media.length < 2}
+                  aria-label="Previous media"
+                  className="rounded-md px-3 py-1.5 text-sm text-white hover:opacity-80 disabled:opacity-40"
+                  style={{ background: "rgba(255,255,255,0.12)", fontFamily: "'Inter', sans-serif" }}
+                >
+                  ←
+                </button>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
+                  {viewer + 1} / {media.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setViewer((current) => (current + 1) % media.length)}
+                  disabled={media.length < 2}
+                  aria-label="Next media"
+                  className="rounded-md px-3 py-1.5 text-sm text-white hover:opacity-80 disabled:opacity-40"
+                  style={{ background: "rgba(255,255,255,0.12)", fontFamily: "'Inter', sans-serif" }}
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadMedia(media[viewer].url, mediaFileName(media[viewer].url, viewer))}
+                  data-testid="media-download"
+                  className="rounded-md px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+                  style={{ background: theme.signal, fontFamily: "'Inter', sans-serif" }}
+                >
+                  Download
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
