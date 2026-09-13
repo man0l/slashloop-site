@@ -20,6 +20,7 @@ const Discover = lazy(() => import("./pages/Discover.jsx"));
 const Gallery = lazy(() => import("./pages/Gallery.jsx"));
 const HookTests = lazy(() => import("./pages/HookTests.jsx"));
 const Studio = lazy(() => import("./pages/Studio.jsx"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage.jsx"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess.jsx"));
 const BillingCancel = lazy(() => import("./pages/BillingCancel.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
@@ -78,6 +79,7 @@ function Nav() {
       <Link to="/gallery" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Gallery</Link>
       <Link to="/tests" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Hook tests</Link>
       <Link to="/studio" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Studio</Link>
+      <Link to="/calendar" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Calendar</Link>
     </>
   );
 
@@ -204,6 +206,7 @@ export default function App() {
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/tests" element={<HookTests />} />
             <Route path="/studio" element={<Studio />} />
+            <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route path="/billing/cancel" element={<BillingCancel />} />
             <Route path="*" element={<NotFound />} />

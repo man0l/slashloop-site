@@ -151,7 +151,7 @@ src/social/
                                         // postPending, checkPostStatus, finalizePost, checkValidity
   registry.ts       // provider map — "many more if I choose" = add file + entry
   engine.ts         // cron handler: due posts → PROCESSING → advance; token refresh scan
-routes: /oauth/:provider/start | /callback | POST /posts (create group) | DELETE /posts/:id
+routes: /oauth/:provider/start | /callback | POST /posts (create group) | GET /posts?from&to | PATCH /posts/:group | DELETE /posts/:group
 ```
 
 ### Workers runtime notes
@@ -176,7 +176,20 @@ Per-platform developer apps + review — Postiz can't help here, and their error
 
 Plan for sandbox/test accounts during development.
 
-## 6. Effort estimate
+## 6. Calendar view (scheduled posts UI)
+
+Postiz's calendar (`apps/frontend/src/components/launches/calendar.tsx`, 1,382 lines + `calendar.context.tsx`) is a custom month-grid: dayjs date math, `react-dnd` for drag-to-reschedule, one chip per scheduled submission per day, click to open the composer. No calendar library underneath — and it's AGPL, so we copy the *behavior*, not the code.
+
+Design for slashloop (month view first):
+
+- **Data**: `GET /posts?from=&to=` (epoch range) → scheduled groups in range. The D1 schema already indexes `publish_date` and one submission is a `group_id` spanning N per-platform rows, so the calendar renders one chip per group per day, colored by aggregate state (queued / processing / published / error) with platform icons.
+- **Drag-to-reschedule** is a single `UPDATE … SET publish_date` on the group's rows — no orchestration to cancel. Postiz has to list and terminate running Temporal workflow instances on every reschedule/delete (`posts.service.ts`); that entire class of problem doesn't exist in the cron + D1 design.
+- **Reject reschedule with 409** while a group is `PROCESSING` (mid-upload); client shows "publishing in progress". `ERROR` posts can be rescheduled to retry.
+- **Click empty day** → new-post composer prefilled with that date; **click chip** → drawer with the group's posts, per-platform state, release links, error messages.
+- **Timezone**: store epoch UTC, render client-local (same as Postiz); the picker converts back to UTC on save.
+- Later: week view, filter by channel, drafts shown dimmed, repeatable posts (`interval_days`) rendered as recurring chips.
+
+## 7. Effort estimate
 
 | Step | Scope |
 |---|---|
@@ -185,6 +198,7 @@ Plan for sandbox/test accounts during development.
 | 3. YouTube client | ~1–2 days |
 | 4. Instagram client | ~1–2 days + Meta review lag |
 | 5. Frontend: connect buttons + schedule UI on slashloop site | ~1–2 days |
+| 6. Calendar view (month grid, drag-reschedule, §6) | ~1 day incl. GET/PATCH endpoints |
 
 Postiz saves roughly 60–70% of the "figure out each API" time; it cannot save the license-decision and app-review time.
 
