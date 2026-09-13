@@ -127,7 +127,15 @@ export default function CalendarPage() {
         {!integrationsLoaded ? (
           <Spinner />
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-3">
+            {integrations.length === 0 && configured.length === 0 && (
+              <p className="rounded-md px-3 py-2" style={{ background: "#FFF8E6", border: "1px solid #EAD39B", ...fB, fontSize: 13, color: "#7A5B00" }}>
+                No platforms are configured on the server yet. Create the developer apps (TikTok / Google / Meta), register the redirect
+                URI <code>mcp.slashloop.dev/api/social/callback/&lt;provider&gt;</code> in each, then set the <code>SOCIAL_*</code> secrets on the
+                worker — the connect buttons appear here automatically.
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
             {integrations.map((integration) => {
               const meta = providerMeta(integration.provider);
               return (
@@ -167,6 +175,7 @@ export default function CalendarPage() {
                   </button>
                 );
               })}
+            </div>
           </div>
         )}
       </section>
