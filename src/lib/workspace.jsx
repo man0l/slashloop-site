@@ -40,16 +40,20 @@ export function WorkspaceProvider({ children }) {
   // calls on one Cloudflare isolate wedge D1 and Discover never starts.
 
   // Default to the oldest workspace (list is server-sorted createdAt asc)
-  // unless the persisted id still refers to one the user owns.
+  // unless the persisted id still refers to one the user owns. A stale
+  // persisted id (workspace deleted, or another account's left in this
+  // browser) must clear to null — pages key their sources/gallery queries
+  // off the id, and firing them with an id you don't own 404s every page.
   useEffect(() => {
-    if (!accessToken || workspaces.length === 0) return;
+    if (!accessToken || loading) return;
     setActiveWorkspaceIdState((current) => {
       if (current && workspaces.some((w) => w.id === current)) return current;
       const fallback = workspaces[0]?.id ?? null;
       if (fallback) localStorage.setItem(ACTIVE_ID_KEY, fallback);
+      else localStorage.removeItem(ACTIVE_ID_KEY);
       return fallback;
     });
-  }, [accessToken, workspaces]);
+  }, [accessToken, loading, workspaces]);
 
   // Signing out clears the switcher; signing back in re-reads the persisted
   // choice before the validator below re-defaults it to the oldest workspace.
