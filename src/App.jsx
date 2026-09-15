@@ -11,6 +11,7 @@ import Home from "./pages/Home.jsx";
 // wait on); everything else becomes its own chunk so the app pages don't
 // pay for the marketing pages' JS and vice versa.
 const Pricing = lazy(() => import("./pages/Pricing.jsx"));
+const AgentSetup = lazy(() => import("./pages/AgentSetup.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Onboarding = lazy(() => import("./pages/Onboarding.jsx"));
 const Account = lazy(() => import("./pages/Account.jsx"));
@@ -92,6 +93,7 @@ function Nav() {
             the hamburger below is the only way to reach them on mobile. */}
         <div className="hidden sm:flex items-center gap-4">
           <Link to="/pricing" style={{ ...fM, fontSize: 13, color: T.ink }}>Pricing</Link>
+          <Link to="/agent-setup" style={{ ...fM, fontSize: 13, color: T.ink }}>AI setup</Link>
           {loading ? (
             // Placeholder with the logged-out controls' footprint — without
             // it the nav CTAs pop in when auth resolves and shift the header.
@@ -136,6 +138,7 @@ function Nav() {
           style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
         >
           <Link to="/pricing" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Pricing</Link>
+          <Link to="/agent-setup" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>AI setup</Link>
           {loading ? null : user ? (
             <>
               {loggedInLinks}
@@ -197,6 +200,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/agent-setup" element={<AgentSetup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/account" element={<Account />} />

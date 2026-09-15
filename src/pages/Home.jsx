@@ -222,6 +222,12 @@ export default function Home() {
               You review content the way you review code: open the morning briefs, approve, create. The research loop
               runs itself — you just keep the taste.
             </p>
+            <div className="mt-5">
+              <CTAButton to="/agent-setup">Onboard your AI agent →</CTAButton>
+            </div>
+            <p className="mt-2.5" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>
+              3 copy-paste prompts: install the MCP · connect via OAuth · deploy the site
+            </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {["web app", "CLI", "MCP · Claude Code", "cron-able", "agent-ready"].map((b) => (
                 <span key={b} className="rounded-full px-3 py-1" style={{ ...fM, fontSize: 11, color: "#B8BEC5", border: "1px solid rgba(255,255,255,0.15)" }}>{b}</span>
