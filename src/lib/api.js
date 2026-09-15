@@ -31,15 +31,21 @@ async function billingFetch(path, { method = "GET", accessToken, body } = {}) {
   });
 
   if (!res.ok) {
+    let payload = null;
+    try { payload = await res.json(); } catch { /* not JSON */ }
+    if (res.status === 404 && payload?.error === "no_workspace") {
+      throw new BillingApiError(
+        payload.message || "No workspace yet — create one from the Sources page, then retry.",
+        404,
+      );
+    }
     if (res.status === 404) {
       throw new BillingApiError(
         "Billing isn't live on the server yet. Try again once Stripe checkout ships.",
         404,
       );
     }
-    let detail = "";
-    try { detail = (await res.json())?.error ?? ""; } catch { /* not JSON */ }
-    throw new BillingApiError(detail || `Request failed (${res.status})`, res.status);
+    throw new BillingApiError(payload?.error || `Request failed (${res.status})`, res.status);
   }
 
   return res.json();
