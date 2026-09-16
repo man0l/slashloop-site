@@ -54,6 +54,7 @@ export default function WorkspaceSwitcher() {
         {workspaces.map((w) => (
           <option key={w.id} value={w.id}>
             {w.name} · {w.planKey}
+            {w.role === "member" ? " · shared" : ""}
           </option>
         ))}
       </select>

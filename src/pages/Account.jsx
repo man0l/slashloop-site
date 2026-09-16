@@ -5,6 +5,7 @@ import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton, Skeleton } from "../components/ui.jsx";
 import CreditTopUp from "../components/CreditTopUp.jsx";
 import FirstRunSteps from "../components/FirstRunSteps.jsx";
+import TeamCard from "../components/TeamCard.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { getBillingStatus, createPortalSession } from "../lib/api.js";
 
@@ -123,6 +124,8 @@ export default function Account() {
           </p>
         )}
       </div>
+
+      <TeamCard />
 
       <button
         onClick={signOut}
