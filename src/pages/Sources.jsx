@@ -1040,11 +1040,11 @@ export default function Sources() {
       <div className="mt-8 relative">
         {selectedIds.size > 0 && (
           <div
-            className="sticky top-3 z-10 mb-3 flex items-center gap-3 rounded-lg px-4 py-2.5"
-            style={{ background: T.ink, color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.18)" }}
+            className="sticky top-3 z-10 mb-3 flex items-center gap-3 rounded-xl px-4 py-2.5"
+            style={{ background: T.card, border: `1px solid ${T.line}` }}
           >
-            <span style={{ ...fB, fontSize: 13 }}>
-              {selectedIds.size} selected
+            <span style={{ ...fM, fontSize: 11, color: T.muted }}>
+              {selectedIds.size} SELECTED
             </span>
             <button
               type="button"
@@ -1059,7 +1059,7 @@ export default function Sources() {
               type="button"
               onClick={() => setSelectedIds(new Set())}
               className="rounded-md px-2 py-1.5"
-              style={{ ...fB, fontSize: 12, color: "#fff", textDecoration: "underline" }}
+              style={{ ...fB, fontSize: 12, color: T.muted, textDecoration: "underline" }}
             >
               Uncheck all
             </button>
