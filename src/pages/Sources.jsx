@@ -645,8 +645,8 @@ function useSourceRowActions(source, accessToken, workspaceId) {
   async function doRefresh() {
     setBusyAction("refresh");
     try {
-      await refreshSource(accessToken, workspaceId, source.id);
-      showToast("Refresh queued — new videos will show up shortly.", { type: "success" });
+      const r = await refreshSource(accessToken, workspaceId, source.id);
+      showToast(refreshDoneMsg(1, 0, r?.creditsCharged, r?.creditsRemaining), { type: "success" });
       invalidateRow();
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.", { type: "error" });
@@ -673,6 +673,21 @@ function useSourceRowActions(source, accessToken, workspaceId) {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
     saveVideoLimit, toggleActive, toggleSelf, doRefresh, doDelete,
   };
+}
+
+/**
+ * Toast message after queueing refreshes. The refresh endpoint returns
+ * { creditsCharged, creditsRemaining } like the suggest-verify endpoint —
+ * surface the cost when it's there, skip it when the response doesn't carry
+ * it (older connector) rather than printing "undefined credits".
+ */
+function refreshDoneMsg(ok, failed, charged, remaining) {
+  const base = failed === 0
+    ? `Refresh queued for ${ok} source${ok === 1 ? "" : "s"} — new videos will show up shortly.`
+    : `Refresh queued for ${ok}, ${failed} failed to queue.`;
+  if (typeof charged !== "number") return base;
+  const cost = `${charged} credit${charged === 1 ? "" : "s"} charged`;
+  return typeof remaining === "number" ? `${base} (${cost} · ${remaining} remaining)` : `${base} (${cost})`;
 }
 
 /** The four per-row action icon buttons — identical on desktop and mobile. */
@@ -978,12 +993,17 @@ export default function Sources() {
       const results = await Promise.allSettled(
         ids.map((id) => refreshSource(accessToken, activeWorkspaceId, id)),
       );
-      const failed = results.filter((r) => r.status === "rejected").length;
-      const ok = ids.length - failed;
+      const okResults = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+      const failed = ids.length - okResults.length;
+      const ok = okResults.length;
+      const charged = okResults.reduce(
+        (sum, r) => sum + (typeof r?.creditsCharged === "number" ? r.creditsCharged : 0),
+        0,
+      );
+      const hasCharged = okResults.some((r) => typeof r?.creditsCharged === "number");
+      const remaining = [...okResults].reverse().find((r) => typeof r?.creditsRemaining === "number")?.creditsRemaining;
       showToast(
-        failed === 0
-          ? `Refresh queued for ${ok} source${ok === 1 ? "" : "s"} — new videos will show up shortly.`
-          : `Refresh queued for ${ok}, ${failed} failed to queue.`,
+        refreshDoneMsg(ok, failed, hasCharged ? charged : undefined, remaining),
         { type: failed === 0 ? "success" : "error" },
       );
       setSelectedIds(new Set());
