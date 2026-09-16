@@ -646,7 +646,10 @@ function useSourceRowActions(source, accessToken, workspaceId) {
     setBusyAction("refresh");
     try {
       const r = await refreshSource(accessToken, workspaceId, source.id);
-      showToast(refreshDoneMsg(1, 0, r?.creditsCharged, r?.creditsRemaining), { type: "success" });
+      const settled = typeof r?.creditsCharged === "number"
+        ? { value: r.creditsCharged }
+        : { value: refreshCeiling([source]), estimated: true };
+      showToast(refreshDoneMsg(1, 0, settled, r?.creditsRemaining), { type: "success" });
       invalidateRow();
     } catch (err) {
       showToast(err instanceof SourcesApiError ? err.message : "Couldn't queue refresh.", { type: "error" });
@@ -676,17 +679,27 @@ function useSourceRowActions(source, accessToken, workspaceId) {
 }
 
 /**
- * Toast message after queueing refreshes. The refresh endpoint returns
- * { creditsCharged, creditsRemaining } like the suggest-verify endpoint —
- * surface the cost when it's there, skip it when the response doesn't carry
- * it (older connector) rather than printing "undefined credits".
+ * Toast message after queueing refreshes. The queued-refresh endpoint returns
+ * no credit fields (debit settles when the worker runs), so the cost shown is
+ * the pre-auth ceiling: 1.5 credits/video × the refresh limit (≈5 for
+ * incremental sources). The worker refunds down to actual videos returned, so
+ * this is worst-case, phrased as "up to". If a response ever carries settled
+ * creditsCharged/creditsRemaining, those win instead.
  */
+const REFRESH_CREDITS_PER_VIDEO = 1.5;
+
+function refreshCeiling(sources) {
+  return sources.reduce((sum, s) => sum + Math.ceil(REFRESH_CREDITS_PER_VIDEO * (s.videoLimit ?? 5)), 0);
+}
+
 function refreshDoneMsg(ok, failed, charged, remaining) {
   const base = failed === 0
     ? `Refresh queued for ${ok} source${ok === 1 ? "" : "s"} — new videos will show up shortly.`
     : `Refresh queued for ${ok}, ${failed} failed to queue.`;
   if (typeof charged !== "number") return base;
-  const cost = `${charged} credit${charged === 1 ? "" : "s"} charged`;
+  const cost = charged.estimated
+    ? `up to ~${charged.value} credits`
+    : `${charged.value} credit${charged.value === 1 ? "" : "s"} charged`;
   return typeof remaining === "number" ? `${base} (${cost} · ${remaining} remaining)` : `${base} (${cost})`;
 }
 
@@ -996,14 +1009,17 @@ export default function Sources() {
       const okResults = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
       const failed = ids.length - okResults.length;
       const ok = okResults.length;
-      const charged = okResults.reduce(
-        (sum, r) => sum + (typeof r?.creditsCharged === "number" ? r.creditsCharged : 0),
-        0,
-      );
-      const hasCharged = okResults.some((r) => typeof r?.creditsCharged === "number");
+      const queued = sources.filter((s) => ids.includes(s.id));
+      const settled = okResults
+        .filter((r) => typeof r?.creditsCharged === "number")
+        .reduce((sum, r) => sum + r.creditsCharged, 0);
+      const hasSettled = okResults.some((r) => typeof r?.creditsCharged === "number");
+      const charged = hasSettled
+        ? { value: settled }
+        : { value: refreshCeiling(queued), estimated: true };
       const remaining = [...okResults].reverse().find((r) => typeof r?.creditsRemaining === "number")?.creditsRemaining;
       showToast(
-        refreshDoneMsg(ok, failed, hasCharged ? charged : undefined, remaining),
+        refreshDoneMsg(ok, failed, charged, remaining),
         { type: failed === 0 ? "success" : "error" },
       );
       setSelectedIds(new Set());
