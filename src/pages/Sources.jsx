@@ -696,7 +696,7 @@ function refreshDoneMsg(ok, failed, charged, remaining) {
   const base = failed === 0
     ? `Refresh queued for ${ok} source${ok === 1 ? "" : "s"} — new videos will show up shortly.`
     : `Refresh queued for ${ok}, ${failed} failed to queue.`;
-  if (typeof charged !== "number") return base;
+  if (!charged || typeof charged.value !== "number") return base;
   const cost = charged.estimated
     ? `up to ~${charged.value} credits`
     : `${charged.value} credit${charged.value === 1 ? "" : "s"} charged`;
