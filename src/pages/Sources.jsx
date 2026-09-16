@@ -385,9 +385,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
         <div>
           <div style={{ ...fM, fontSize: 11, letterSpacing: 2, color: T.muted }}>AI SUGGESTIONS</div>
           <p className="mt-1" style={{ ...fB, fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 480 }}>
-            Seeded from this workspace's biggest outliers, then checked against real TikTok data — a suggestion only
-            stays up if that check actually found videos. A suggestion you don't track — dismissed, or just left
-            untouched for a minute — won't come back on future runs.
+            Fresh picks from your top performers — every one backed by real TikTok videos.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -749,7 +747,7 @@ function SourceIssueBadge({ issue, issueUnavailable }) {
   return null;
 }
 
-function SourceRow({ source, accessToken, workspaceId }) {
+function SourceRow({ source, accessToken, workspaceId, selected, onToggleSelect }) {
   const navigate = useNavigate();
   const {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
@@ -771,6 +769,14 @@ function SourceRow({ source, accessToken, workspaceId }) {
       style={{ borderTop: `1px solid ${T.line}` }}
       title="Open this source's gallery"
     >
+      <td className="py-3 pr-2" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(source.id)}
+          aria-label={`Select ${source.query}`}
+        />
+      </td>
       <td className="py-3 pr-4">
         <div className="flex items-center gap-3">
           <SourceThumb src={thumbUrl} />
@@ -832,7 +838,7 @@ function SourceRow({ source, accessToken, workspaceId }) {
  * hook), stacked into a card instead of table columns, since a 5-column
  * table with 4 icon actions has nowhere to go on a phone-width screen.
  */
-function SourceCard({ source, accessToken, workspaceId }) {
+function SourceCard({ source, accessToken, workspaceId, selected, onToggleSelect }) {
   const navigate = useNavigate();
   const {
     busyAction, confirmDelete, setConfirmDelete, editingLimit, setEditingLimit,
@@ -852,6 +858,13 @@ function SourceCard({ source, accessToken, workspaceId }) {
       style={{ border: `1px solid ${T.line}`, background: T.card }}
     >
       <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(source.id)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select ${source.query}`}
+        />
         <SourceThumb src={thumbUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
@@ -921,6 +934,9 @@ export default function Sources() {
   const { user, loading: authLoading, accessToken } = useAuth();
   const { activeWorkspaceId, loading: workspaceLoading } = useWorkspace();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkRefreshing, setBulkRefreshing] = useState(false);
 
   const sourcesQuery = useQuery({
     queryKey: ["sources", activeWorkspaceId],
@@ -937,6 +953,44 @@ export default function Sources() {
   // data immediately (the queries pick it up by key once the row mounts).
   function onCreated() {
     queryClient.invalidateQueries({ queryKey: ["sources", activeWorkspaceId] });
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected = sources.length > 0 && selectedIds.size === sources.length;
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(sources.map((s) => s.id)));
+  }
+
+  async function refreshSelected() {
+    if (selectedIds.size === 0 || bulkRefreshing) return;
+    setBulkRefreshing(true);
+    const ids = [...selectedIds];
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => refreshSource(accessToken, activeWorkspaceId, id)),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const ok = ids.length - failed;
+      showToast(
+        failed === 0
+          ? `Refresh queued for ${ok} source${ok === 1 ? "" : "s"} — new videos will show up shortly.`
+          : `Refresh queued for ${ok}, ${failed} failed to queue.`,
+        { type: failed === 0 ? "success" : "error" },
+      );
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["sources", activeWorkspaceId] });
+    } finally {
+      setBulkRefreshing(false);
+    }
   }
 
   if (authLoading) {
@@ -983,7 +1037,34 @@ export default function Sources() {
         <SuggestedSourcesPanel accessToken={accessToken} workspaceId={activeWorkspaceId} onTracked={onCreated} />
       )}
 
-      <div className="mt-8">
+      <div className="mt-8 relative">
+        {selectedIds.size > 0 && (
+          <div
+            className="sticky top-3 z-10 mb-3 flex items-center gap-3 rounded-lg px-4 py-2.5"
+            style={{ background: T.ink, color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.18)" }}
+          >
+            <span style={{ ...fB, fontSize: 13 }}>
+              {selectedIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={refreshSelected}
+              disabled={bulkRefreshing}
+              className="rounded-md px-3 py-1.5"
+              style={{ ...fB, fontSize: 12, fontWeight: 600, background: T.signal, color: "#fff", opacity: bulkRefreshing ? 0.6 : 1 }}
+            >
+              {bulkRefreshing ? "Refreshing…" : `Refresh all (${selectedIds.size})`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="rounded-md px-2 py-1.5"
+              style={{ ...fB, fontSize: 12, color: "#fff", textDecoration: "underline" }}
+            >
+              Uncheck all
+            </button>
+          </div>
+        )}
         {sourcesQuery.isError ? (
           <AlertBanner
             action={
@@ -1014,6 +1095,14 @@ export default function Sources() {
             <table className="hidden sm:table w-full" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr>
+                  <th className="pb-2 pr-2" style={{ width: 28 }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      aria-label={allSelected ? "Deselect all sources" : "Select all sources"}
+                    />
+                  </th>
                   <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>SOURCE</th>
                   <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>VIDEOS</th>
                   <th className="text-left pb-2" style={{ ...fM, fontSize: 11, letterSpacing: 1, color: T.muted }}>LAST REFRESH</th>
@@ -1028,6 +1117,8 @@ export default function Sources() {
                     source={s}
                     accessToken={accessToken}
                     workspaceId={activeWorkspaceId}
+                    selected={selectedIds.has(s.id)}
+                    onToggleSelect={toggleSelect}
                   />
                 ))}
               </tbody>
@@ -1040,6 +1131,8 @@ export default function Sources() {
                   source={s}
                   accessToken={accessToken}
                   workspaceId={activeWorkspaceId}
+                  selected={selectedIds.has(s.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))}
             </div>
