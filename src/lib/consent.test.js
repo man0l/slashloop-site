@@ -1,8 +1,9 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { readConsent, writeConsent, canTrack, CONSENT_KEY } from "./consent.js";
+import { readConsent, writeConsent, canTrack, resetConsentForTests, CONSENT_KEY } from "./consent.js";
 
 describe("cookie consent", () => {
   beforeEach(() => {
+    resetConsentForTests();
     window.localStorage.clear();
     delete window.gtag;
   });
@@ -33,5 +34,17 @@ describe("cookie consent", () => {
       ad_storage: "denied",
       analytics_storage: "denied",
     });
+  });
+
+  it("session latch holds without any persistent store", () => {
+    const store = window.localStorage;
+    Object.defineProperty(window, "localStorage", { value: undefined, configurable: true });
+    try {
+      writeConsent("accepted");
+      expect(readConsent()).toBe("accepted");
+      expect(canTrack()).toBe(true);
+    } finally {
+      Object.defineProperty(window, "localStorage", { value: store, configurable: true });
+    }
   });
 });

@@ -156,22 +156,23 @@ export default function CalendarPage() {
               );
             })}
             {knownProviders
-              .filter((provider) => !connectedProviders.has(provider) && configured.includes(provider))
+              .filter((provider) => configured.includes(provider))
               .map((provider) => {
                 const meta = providerMeta(provider);
+                const hasAccount = connectedProviders.has(provider);
                 return (
                   <button
                     key={provider}
                     type="button"
                     onClick={() => connect(provider)}
-                    title={meta.note}
+                    title={hasAccount ? `Link another ${meta.label} account` : meta.note}
                     className="flex items-center gap-2 rounded-lg px-3 py-1.5 hover:opacity-90"
                     style={{ border: `1px dashed ${T.line}`, background: "transparent", ...fM, fontSize: 13, color: T.muted }}
                   >
                     <span className="rounded px-1 text-[10px] font-bold text-white" style={{ background: meta.accent }}>
                       {meta.glyph}
                     </span>
-                    Connect {meta.label}
+                    {hasAccount ? `+ ${meta.label}` : `Connect ${meta.label}`}
                   </button>
                 );
               })}

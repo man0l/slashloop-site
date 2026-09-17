@@ -6,21 +6,46 @@
 export const CONSENT_KEY = "sl-cookie-consent";
 export const OPEN_SETTINGS_EVENT = "sl:cookie-settings";
 
-export function readConsent() {
+// In-memory latch: once the visitor chooses in this tab session, never ask
+// again even if both persistent stores are unavailable (blocked storage,
+// private-mode quirks). Survives remounts; localStorage/cookie cover reloads.
+let sessionChoice = null;
+
+function readStore() {
   try {
     const v = window.localStorage?.getItem(CONSENT_KEY);
-    return v === "accepted" || v === "rejected" ? v : null;
+    if (v === "accepted" || v === "rejected") return v;
   } catch {
-    return null;
+    /* blocked storage */
   }
+  try {
+    const m = document.cookie.match(/(?:^|;\s*)sl-cookie-consent=(accepted|rejected)/);
+    if (m) return m[1];
+  } catch {
+    /* cookies unavailable */
+  }
+  return null;
+}
+
+export function readConsent() {
+  return sessionChoice ?? readStore();
 }
 
 export function writeConsent(value) {
   const granted = value === "accepted";
+  sessionChoice = value;
   try {
     window.localStorage?.setItem(CONSENT_KEY, value);
   } catch {
     /* private mode — consent applies to this session only */
+  }
+  try {
+    // Fallback for browsers with localStorage disabled: 1-year first-party
+    // cookie, SameSite=Lax, Secure on https. Same values, same semantics.
+    const secure = window.location?.protocol === "https:" ? ";Secure" : "";
+    document.cookie = `${CONSENT_KEY}=${value};max-age=31536000;path=/;SameSite=Lax${secure}`;
+  } catch {
+    /* cookies unavailable — sessionChoice still holds for this tab */
   }
   window.gtag?.("consent", "update", {
     ad_storage: "denied",
@@ -32,6 +57,11 @@ export function writeConsent(value) {
 /** Gate for analytics calls — GA4 pageviews/events only fire on accept. */
 export function canTrack() {
   return readConsent() === "accepted";
+}
+
+/** Test-only: clear the in-memory latch (persistent stores are the test's job). */
+export function resetConsentForTests() {
+  sessionChoice = null;
 }
 
 /** Re-open the banner (footer "Cookie settings" link dispatches this). */
