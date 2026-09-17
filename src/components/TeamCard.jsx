@@ -21,6 +21,7 @@ export default function TeamCard() {
   const [inviteStatus, setInviteStatus] = useState("idle"); // idle | loading | error
   const [inviteError, setInviteError] = useState("");
   const [inviteResult, setInviteResult] = useState("");
+  const [inviteMailOk, setInviteMailOk] = useState(true);
   const [removingEmail, setRemovingEmail] = useState(null);
 
   const rosterQuery = useQuery({
@@ -46,6 +47,7 @@ export default function TeamCard() {
     setInviteStatus("loading");
     setInviteError("");
     setInviteResult("");
+    setInviteMailOk(true);
     try {
       const result = await inviteToAllWorkspaces(accessToken, inviteEmail.trim());
       const added = result.workspaces.filter((w) => w.status === "added").length;
@@ -55,7 +57,12 @@ export default function TeamCard() {
       if (added) parts.push(`added to ${added} workspace${added === 1 ? "" : "s"}`);
       if (existing) parts.push(`already in ${existing}`);
       if (skipped) parts.push(`${skipped} full — not added`);
-      setInviteResult(`${result.email} ${parts.join(", ")}. They sign up with that email and everything appears in their switcher.`);
+      let summary = `${result.email} ${parts.join(", ")}. They sign up with that email and everything appears in their switcher.`;
+      if (result.mail && !result.mail.sent) {
+        summary += ` Note: the invite email could not be sent (${result.mail.reason || "mail unavailable"}) — ask them to sign up directly at slashloop.dev/login with this email.`;
+      }
+      setInviteMailOk(!result.mail || result.mail.sent !== false);
+      setInviteResult(summary);
       setInviteEmail("");
       setInviteStatus("idle");
       await queryClient.invalidateQueries({ queryKey: ["team-roster"] });
@@ -141,7 +148,7 @@ export default function TeamCard() {
               {inviteStatus === "loading" ? "Inviting…" : "Invite"}
             </button>
             {inviteResult && (
-              <p className="basis-full" style={{ ...fM, fontSize: 12, color: "#1F5C2E" }}>
+              <p className="basis-full" style={{ ...fM, fontSize: 12, color: inviteMailOk ? "#1F5C2E" : "#7A5B00" }}>
                 {inviteResult}
               </p>
             )}

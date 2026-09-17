@@ -83,8 +83,23 @@ describe("TeamCard", () => {
     await screen.findByText("No teammates yet.");
     fireEvent.change(screen.getByLabelText("Teammate email"), { target: { value: "new@x.co" } });
     fireEvent.click(screen.getByRole("button", { name: "Invite" }));
-    await waitFor(() => expect(teamApi.inviteToAllWorkspaces).toHaveBeenCalledWith("tok-1", "new@x.co"));
+    await waitFor(() =>
+      expect(teamApi.inviteToAllWorkspaces).toHaveBeenCalledWith("tok-1", "new@x.co"),
+    );
     expect(await screen.findByText(/added to 1 workspace/)).toBeInTheDocument();
+  });
+
+  it("warns when the invite lands but the email could not be sent", async () => {
+    teamApi.inviteToAllWorkspaces.mockImplementationOnce(async (_tok, email) => ({
+      email,
+      workspaces: [{ id: "ws-1", name: "Acme", status: "added" }],
+      mail: { sent: false, reason: "resend_403: domain not verified" },
+    }));
+    renderCard();
+    await screen.findByText("No teammates yet.");
+    fireEvent.change(screen.getByLabelText("Teammate email"), { target: { value: "new@x.co" } });
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    expect(await screen.findByText(/could not be sent.*domain not verified/)).toBeInTheDocument();
   });
 
   it("removes from everywhere and refreshes the roster", async () => {
