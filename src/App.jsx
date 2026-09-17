@@ -5,6 +5,7 @@ import { CTAButton, GhostButton, Spinner } from "./components/ui.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { useAuth } from "./lib/auth.jsx";
 import { trackPageview } from "./lib/analytics.js";
+import { readConsent, writeConsent, openCookieSettings, OPEN_SETTINGS_EVENT } from "./lib/consent.js";
 import Home from "./pages/Home.jsx";
 
 // The landing page ships in the entry chunk (it's what first-time visitors
@@ -25,6 +26,8 @@ const Studio = lazy(() => import("./pages/Studio.jsx"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage.jsx"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess.jsx"));
 const BillingCancel = lazy(() => import("./pages/BillingCancel.jsx"));
+const Privacy = lazy(() => import("./pages/Privacy.jsx"));
+const Terms = lazy(() => import("./pages/Terms.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 
 function Logo() {
@@ -179,8 +182,53 @@ function Footer() {
           <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev — /loop for marketing</span>
         </div>
         <span style={{ ...fM, fontSize: 11, color: "#5D656E" }}>© 2026 · made with Claude Code, naturally</span>
+        <span className="flex items-center gap-3" style={{ ...fM, fontSize: 11 }}>
+          <Link to="/privacy" style={{ color: "#7A828B" }}>Privacy</Link>
+          <Link to="/terms" style={{ color: "#7A828B" }}>Terms</Link>
+          <button type="button" onClick={openCookieSettings} style={{ color: "#7A828B", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}>
+            Cookie settings
+          </button>
+        </span>
       </footer>
     </section>
+  );
+}
+
+/** GDPR cookie banner — analytics (GA4) stays off until accept. Re-opens via
+ *  the footer "Cookie settings" link (OPEN_SETTINGS_EVENT). The cookieless
+ *  indiestack counter is unaffected and always on. */
+function CookieBanner() {
+  const [visible, setVisible] = useState(() => readConsent() === null);
+
+  useEffect(() => {
+    const reopen = () => setVisible(true);
+    window.addEventListener(OPEN_SETTINGS_EVENT, reopen);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, reopen);
+  }, []);
+
+  if (!visible) return null;
+
+  const choose = (value) => {
+    writeConsent(value);
+    setVisible(false);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Cookie consent"
+      className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm rounded-xl p-4 z-50"
+      style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(0,0,0,0.18)" }}
+    >
+      <p style={{ ...fM, fontSize: 12.5, color: T.ink, lineHeight: 1.6 }}>
+        We use a sign-in cookie (required) and, with your permission, Google Analytics cookies
+        to understand usage. See <Link to="/privacy" style={{ color: T.signal }}>Privacy</Link>.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <CTAButton onClick={() => choose("accepted")}>Accept</CTAButton>
+        <GhostButton onClick={() => choose("rejected")}>Reject</GhostButton>
+      </div>
+    </div>
   );
 }
 
@@ -217,10 +265,13 @@ export default function App() {
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route path="/billing/cancel" element={<BillingCancel />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
+      <CookieBanner />
       <Footer />
     </div>
   );

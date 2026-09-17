@@ -98,7 +98,7 @@ export default function CalendarPage() {
     }
   }
 
-  const knownProviders = ["tiktok", "youtube", "instagram"];
+  const knownProviders = ["tiktok", "youtube", "instagram", "threads"];
   const connectedProviders = new Set(integrations.map((row) => row.provider));  return (
     <main className="max-w-5xl mx-auto px-5 py-8">
       <SectionLabel>Scheduler</SectionLabel>
@@ -148,7 +148,7 @@ export default function CalendarPage() {
                     {meta.glyph}
                   </span>
                   {integration.name || meta.label}
-                  {integration.profile ? <span style={{ color: T.muted }}>@{integration.profile}</span> : null}
+                  {integration.profile ? <span style={{ color: T.muted }}>@{String(integration.profile).replace(/^@/, "")}</span> : null}
                   <button type="button" onClick={() => disconnect(integration.id)} style={{ color: T.muted }} className="hover:text-red-400">
                     ✕
                   </button>

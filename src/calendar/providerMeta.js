@@ -21,6 +21,12 @@ export const PROVIDER_META = {
     glyph: "IG",
     note: "Business/Creator account linked to a Facebook Page.",
   },
+  threads: {
+    label: "Threads",
+    accent: "#14181D",
+    glyph: "TH",
+    note: "Text, photos, or video; 500 characters max.",
+  },
 };
 
 export function providerMeta(provider) {

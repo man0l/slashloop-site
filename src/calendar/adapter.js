@@ -57,7 +57,7 @@ export function createMockAdapter(seed = {}) {
 
   return {
     async listIntegrations() {
-      return { integrations: integrations.map((row) => ({ ...row })), configured: ["tiktok", "youtube", "instagram"] };
+      return { integrations: integrations.map((row) => ({ ...row })), configured: ["tiktok", "youtube", "instagram", "threads"] };
     },
     async connectUrl(provider) {
       return { url: `https://example.com/oauth/${provider}` };

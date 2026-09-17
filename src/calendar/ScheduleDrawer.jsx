@@ -297,7 +297,7 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
                     {meta.glyph}
                   </span>
                   <span>{integration.name || meta.label}</span>
-                  <span style={{ fontSize: 12, color: theme.muted, fontFamily: "'IBM Plex Mono', monospace" }}>{integration.profile ? `@${integration.profile}` : ""}</span>
+                  <span style={{ fontSize: 12, color: theme.muted, fontFamily: "'IBM Plex Mono', monospace" }}>{integration.profile ? `@${String(integration.profile).replace(/^@/, "")}` : ""}</span>
                 </label>
               );
             })}
