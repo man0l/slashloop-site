@@ -21,6 +21,7 @@ export const calendarTheme = {
     published: { label: "Published", bg: "#E8F3F1", border: "#9FCFC8", text: "#0F7B6C", dot: "#0F7B6C" },
     error: { label: "Failed", bg: "#FDECEA", border: "#F3B5AE", text: "#7A1F17", dot: "#D9534F" },
     draft: { label: "Draft", bg: "#F1F2EF", border: "#C9CCC5", text: "#6E7681", dot: "#9AA0A8", dashed: true },
+    scrubbing: { label: "Cleaning…", bg: "#EEF0FB", border: "#B9BFE8", text: "#3B3F8F", dot: "#646BC4" },
   },
 };
 

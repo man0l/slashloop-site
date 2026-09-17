@@ -595,6 +595,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
         <ScheduleDrawer
           adapter={socialAdapter}
           mode="create"
+          mediaIsRecreated
           initialContent={card.caption ?? ""}
           initialMedia={recreationImages.map((url) => ({ type: "image", url }))}
           initialDate={new Date()}

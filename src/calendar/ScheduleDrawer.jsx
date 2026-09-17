@@ -16,9 +16,9 @@ import { providerMeta } from "./providerMeta.js";
 import { resolveTheme } from "./calendarTheme.js";
 import { MediaThumbStrip } from "./MediaThumbStrip.jsx";
 
-const STATE_KEY = { PUBLISHED: "published", PROCESSING: "processing", ERROR: "error", QUEUE: "queued", DRAFT: "draft" };
+const STATE_KEY = { PUBLISHED: "published", PROCESSING: "processing", ERROR: "error", QUEUE: "queued", DRAFT: "draft", SCRUB: "scrubbing" };
 
-export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, initialDate, initialContent = "", initialMedia, onClose, onSaved, onError }) {
+export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, initialDate, initialContent = "", initialMedia, mediaIsRecreated = false, onClose, onSaved, onError }) {
   const theme = resolveTheme(themeOverride);
   const [integrations, setIntegrations] = useState([]);
   const [content, setContent] = useState(group?.content ?? initialContent);
@@ -34,6 +34,10 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
   );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
+  // "Remove metadata": re-capture every media item before publishing (fresh
+  // bytes, no source fingerprint). Disabled for recreated decks — gpt-image
+  // slides are already fresh.
+  const [stripMetadata, setStripMetadata] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -100,11 +104,12 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
           content: content.trim(),
           media: mediaRows.filter((row) => row.url),
           publishDate: date,
+          stripMetadata: stripMetadata && !mediaIsRecreated,
         });
       } else if (mode === "draft") {
         await adapter.updateGroup(group.groupId, { content: content.trim(), media: mediaRows.filter((row) => row.url) });
         if (date !== null) {
-          await adapter.scheduleDraft(group.groupId, date);
+          await adapter.scheduleDraft(group.groupId, date, { stripMetadata: stripMetadata && !mediaIsRecreated });
           result = { scheduled: true, publishDate: date };
         } else {
           result = { draftSaved: true };
@@ -233,6 +238,29 @@ export function ScheduleDrawer({ adapter, theme: themeOverride, mode, group, ini
             theme={theme}
             onError={(err) => setProblem(err.message || "Upload failed.")}
           />
+          {mode !== "edit" && (
+            <label
+              className="flex items-start gap-2 rounded-md px-2.5 py-1.5"
+              style={{ border: `1px solid ${theme.line}`, background: theme.paper, fontSize: 12, color: theme.ink }}
+              title={mediaIsRecreated ? "Recreated slides were just generated — already a fresh footprint." : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={mediaIsRecreated ? false : stripMetadata}
+                disabled={mediaIsRecreated}
+                onChange={(event) => setStripMetadata(event.target.checked)}
+                data-testid="strip-metadata"
+              />
+              <span>
+                Remove metadata — re-capture everything for a fresh footprint
+                <span className="block" style={{ fontSize: 11, color: theme.muted }}>
+                  {mediaIsRecreated
+                    ? "Not needed here: recreated slides were just generated, they carry no original fingerprint."
+                    : "Images are re-rendered at the same size; videos are re-encoded through Cloudflare Stream (takes a few minutes — the chip shows “Cleaning…” until it lands in the queue)."}
+                </span>
+              </span>
+            </label>
+          )}
         </div>
 
         <label className="flex flex-col gap-1" style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: theme.muted }}>

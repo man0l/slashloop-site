@@ -84,8 +84,8 @@ export function createMockAdapter(seed = {}) {
         groupId,
         publishDate: input.publishDate ?? 0,
         content: input.content,
-        media: input.media ?? [],
-        state: input.draft ? "draft" : "queued",
+        media: (input.media ?? []).map((m) => ({ ...m, ...(input.stripMetadata ? { scrub: true } : {}) })),
+        state: input.draft ? "draft" : input.stripMetadata ? "scrubbing" : "queued",
         posts: input.integrationIds.map((id) => {
           const integration = integrations.find((row) => row.id === id);
           return { id: `${groupId}-${id}`, provider: integration?.provider ?? id, state: input.draft ? "DRAFT" : "QUEUE", releaseUrl: null, error: null };
@@ -110,11 +110,16 @@ export function createMockAdapter(seed = {}) {
       group.content = input.content;
       group.media = input.media.map((m) => ({ ...m }));
     },
-    async scheduleDraft(groupId, publishDate) {
+    async scheduleDraft(groupId, publishDate, opts = {}) {
       const index = drafts.findIndex((row) => row.groupId === groupId);
       if (index < 0) throw new Error("not found");
       const [group] = drafts.splice(index, 1);
-      group.state = "queued";
+      if (opts.stripMetadata) {
+        group.media = group.media.map((m) => ({ ...m, scrub: true }));
+        group.state = "scrubbing";
+      } else {
+        group.state = "queued";
+      }
       group.publishDate = publishDate;
       group.posts.forEach((post) => (post.state = "QUEUE"));
       groups.push(group);

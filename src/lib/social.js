@@ -72,6 +72,7 @@ export function createApiAdapter(accessToken) {
           media: input.media ?? [],
           ...(input.publishDate !== undefined ? { publishDate: input.publishDate } : {}),
           ...(input.draft ? { draft: true } : {}),
+          ...(input.stripMetadata ? { stripMetadata: true } : {}),
           settings: input.settings ?? {},
         },
       });
@@ -93,11 +94,11 @@ export function createApiAdapter(accessToken) {
       });
     },
 
-    async scheduleDraft(groupId, publishDate) {
+    async scheduleDraft(groupId, publishDate, opts = {}) {
       await apiFetch(`/api/social/posts?id=${encodeURIComponent(groupId)}`, {
         method: "PATCH",
         accessToken,
-        body: { state: "QUEUE", publishDate },
+        body: { state: "QUEUE", publishDate, ...(opts.stripMetadata ? { stripMetadata: true } : {}) },
       });
     },
 
