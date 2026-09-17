@@ -1,4 +1,4 @@
-// The team client — URL shape, method, and body/query for each roster call.
+// The team client — URL shape, method, and body/query for each call.
 // apiFetch is mocked: this pins the contract, not the transport.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -9,38 +9,21 @@ vi.mock("./http.js", () => ({
 }));
 
 import {
-  listWorkspaceMembers,
-  inviteWorkspaceMember,
+  listTeamRoster,
   inviteToAllWorkspaces,
-  removeWorkspaceMember,
+  removeTeamMember,
   TeamApiError,
 } from "./team.js";
 
 describe("team.js", () => {
   beforeEach(() => apiFetch.mockClear());
 
-  it("lists the roster", async () => {
-    await listWorkspaceMembers("tok", "ws-1");
-    expect(apiFetch).toHaveBeenCalledWith("/api/workspaces/ws-1/members", {
+  it("lists the global roster", async () => {
+    await listTeamRoster("tok");
+    expect(apiFetch).toHaveBeenCalledWith("/api/workspaces?action=team", {
       accessToken: "tok",
       signal: undefined,
     });
-  });
-
-  it("invites by email in the body", async () => {
-    await inviteWorkspaceMember("tok", "ws-1", "mate@x.co");
-    expect(apiFetch).toHaveBeenCalledWith("/api/workspaces/ws-1/members", {
-      method: "POST",
-      accessToken: "tok",
-      body: { email: "mate@x.co" },
-    });
-  });
-
-  it("removes by email in the query string", async () => {
-    await removeWorkspaceMember("tok", "ws-1", "mate@x.co");
-    const [url, init] = apiFetch.mock.calls[0];
-    expect(url).toBe("/api/workspaces/ws-1/members?email=mate%40x.co");
-    expect(init.method).toBe("DELETE");
   });
 
   it("invites to all workspaces via the bulk action", async () => {
@@ -50,6 +33,13 @@ describe("team.js", () => {
       accessToken: "tok",
       body: { email: "mate@x.co" },
     });
+  });
+
+  it("removes from all workspaces by email in the query string", async () => {
+    await removeTeamMember("tok", "mate@x.co");
+    const [url, init] = apiFetch.mock.calls[0];
+    expect(url).toBe("/api/workspaces?action=team&email=mate%40x.co");
+    expect(init.method).toBe("DELETE");
   });
 
   it("re-exports ApiError as TeamApiError", () => {

@@ -1,32 +1,15 @@
-// Client for the team roster endpoints (/api/workspaces/:id/members on the
-// connector at VITE_MCP_URL). A workspace owner invites teammates by email;
-// each teammate keeps their own Google login and gets full access to every
-// workspace they're invited to (no roles yet — membership is the only gate).
+// Client for the team endpoints on the connector at VITE_MCP_URL. Invites
+// always cover every workspace the caller owns; each teammate keeps their
+// own Google login and gets full access to all of them (no roles yet —
+// membership is the only gate).
 
 import { apiFetch, ApiError } from "./http.js";
 
 export const TeamApiError = ApiError;
 
-/** GET /api/workspaces/:id/members -> { members: [{ id, email, createdAt }] } */
-export function listWorkspaceMembers(accessToken, workspaceId, signal) {
-  return apiFetch(`/api/workspaces/${workspaceId}/members`, { accessToken, signal });
-}
-
-/** POST /api/workspaces/:id/members { email } -> { id, email, createdAt } */
-export function inviteWorkspaceMember(accessToken, workspaceId, email) {
-  return apiFetch(`/api/workspaces/${workspaceId}/members`, {
-    method: "POST",
-    accessToken,
-    body: { email },
-  });
-}
-
-/** DELETE /api/workspaces/:id/members?email=… -> { ok: true } */
-export function removeWorkspaceMember(accessToken, workspaceId, email) {
-  return apiFetch(
-    `/api/workspaces/${workspaceId}/members?email=${encodeURIComponent(email)}`,
-    { method: "DELETE", accessToken },
-  );
+/** GET /api/workspaces?action=team -> { workspaces: [{ id, name, members }] } */
+export function listTeamRoster(accessToken, signal) {
+  return apiFetch(`/api/workspaces?action=team`, { accessToken, signal });
 }
 
 /**
@@ -41,4 +24,16 @@ export function inviteToAllWorkspaces(accessToken, email) {
     accessToken,
     body: { email },
   });
+}
+
+/**
+ * DELETE /api/workspaces?action=team&email=…
+ * -> { ok: true, email, removedFrom: [workspaceId] }
+ * Drops the teammate from every owned workspace at once.
+ */
+export function removeTeamMember(accessToken, email) {
+  return apiFetch(
+    `/api/workspaces?action=team&email=${encodeURIComponent(email)}`,
+    { method: "DELETE", accessToken },
+  );
 }

@@ -1,44 +1,31 @@
-// The Team card — owner invites/removes teammates by email; a member sees
-// the roster read-only. team.js and workspace state are mocked: these test
-// the UI contract (who gets edit controls, what the invite flow calls).
+// The Team panel — global roster (no active-workspace scoping), invite always
+// covers every owned workspace, remove drops from all at once. team.js and
+// auth are mocked: these test the UI contract.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const state = vi.hoisted(() => ({
   accessToken: "tok-1",
-  activeWorkspaceId: "ws-1",
-  activeWorkspace: { id: "ws-1", name: "Acme", role: "owner" },
-  members: [],
+  roster: { workspaces: [] },
 }));
 vi.mock("../lib/auth.jsx", () => ({
   useAuth: () => ({ accessToken: state.accessToken }),
 }));
-vi.mock("../lib/workspace.jsx", () => ({
-  useWorkspace: () => ({
-    activeWorkspaceId: state.activeWorkspaceId,
-    activeWorkspace: state.activeWorkspace,
-  }),
-}));
 
 const teamApi = vi.hoisted(() => ({
-  listWorkspaceMembers: vi.fn(async () => ({ members: state.members })),
-  inviteWorkspaceMember: vi.fn(async (_tok, _wsId, email) => ({ id: "wm-new", email, createdAt: "now" })),
+  listTeamRoster: vi.fn(async () => state.roster),
   inviteToAllWorkspaces: vi.fn(async (_tok, email) => ({
     email,
-    workspaces: [
-      { id: "ws-1", name: "Acme", status: "added" },
-      { id: "ws-2", name: "Side", status: "already_member" },
-    ],
+    workspaces: [{ id: "ws-1", name: "Acme", status: "added" }],
   })),
-  removeWorkspaceMember: vi.fn(async () => ({ ok: true })),
+  removeTeamMember: vi.fn(async () => ({ ok: true, email: "mate@x.co", removedFrom: ["ws-1"] })),
 }));
 vi.mock("../lib/team.js", () => ({
   TeamApiError: class extends Error {},
-  listWorkspaceMembers: (...a) => teamApi.listWorkspaceMembers(...a),
-  inviteWorkspaceMember: (...a) => teamApi.inviteWorkspaceMember(...a),
+  listTeamRoster: (...a) => teamApi.listTeamRoster(...a),
   inviteToAllWorkspaces: (...a) => teamApi.inviteToAllWorkspaces(...a),
-  removeWorkspaceMember: (...a) => teamApi.removeWorkspaceMember(...a),
+  removeTeamMember: (...a) => teamApi.removeTeamMember(...a),
 }));
 
 import TeamCard from "./TeamCard.jsx";
@@ -55,65 +42,59 @@ function renderCard() {
 describe("TeamCard", () => {
   beforeEach(() => {
     state.accessToken = "tok-1";
-    state.activeWorkspaceId = "ws-1";
-    state.activeWorkspace = { id: "ws-1", name: "Acme", role: "owner" };
-    state.members = [];
-    teamApi.listWorkspaceMembers.mockClear();
-    teamApi.listWorkspaceMembers.mockImplementation(async () => ({ members: state.members }));
-    teamApi.inviteWorkspaceMember.mockClear();
+    state.roster = { workspaces: [] };
+    teamApi.listTeamRoster.mockClear();
     teamApi.inviteToAllWorkspaces.mockClear();
-    teamApi.removeWorkspaceMember.mockClear();
+    teamApi.removeTeamMember.mockClear();
   });
 
-  it("lists members and shows the invite form for an owner", async () => {
-    state.members = [{ id: "wm-1", email: "mate@x.co", createdAt: "now" }];
+  it("shows the empty state with no workspace scoping", async () => {
     renderCard();
-    expect(await screen.findByText("mate@x.co")).toBeInTheDocument();
+    expect(await screen.findByText("No teammates yet.")).toBeInTheDocument();
+    // No per-workspace UI: no switcher reference, no scope checkbox.
+    expect(screen.queryByText(/shared with you/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/all my workspaces/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Teammate email")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Invite" })).toBeInTheDocument();
   });
 
-  it("sends the invite and refreshes the roster", async () => {
-    renderCard();
-    await screen.findByText("No teammates yet.");
-    fireEvent.change(screen.getByLabelText("Teammate email"), { target: { value: "new@x.co" } });
-    // Single workspace: uncheck the default "all my workspaces" box.
-    fireEvent.click(screen.getByLabelText("Add to all my workspaces"));
-    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
-    await waitFor(() =>
-      expect(teamApi.inviteWorkspaceMember).toHaveBeenCalledWith("tok-1", "ws-1", "new@x.co"),
-    );
-    expect(teamApi.inviteToAllWorkspaces).not.toHaveBeenCalled();
-    // listWorkspaceMembers re-ran after the invalidation
-    await waitFor(() => expect(teamApi.listWorkspaceMembers).toHaveBeenCalledTimes(2));
-  });
-
-  it("invites to all workspaces by default and reports the result", async () => {
-    renderCard();
-    await screen.findByText("No teammates yet.");
-    expect(screen.getByLabelText("Add to all my workspaces").checked).toBe(true);
-    fireEvent.change(screen.getByLabelText("Teammate email"), { target: { value: "new@x.co" } });
-    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
-    await waitFor(() =>
-      expect(teamApi.inviteToAllWorkspaces).toHaveBeenCalledWith("tok-1", "new@x.co"),
-    );
-    expect(teamApi.inviteWorkspaceMember).not.toHaveBeenCalled();
-    expect(await screen.findByText(/added to 1 workspace, already in 1/)).toBeInTheDocument();
-  });
-
-  it("hides edit controls from a member viewing a shared workspace", async () => {
-    state.activeWorkspace = { id: "ws-1", name: "Acme", role: "member" };
-    renderCard();
-    expect(await screen.findByText(/shared with you/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Teammate email")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Invite" })).not.toBeInTheDocument();
-  });
-
-  it("shows a read-only roster without a Remove button for members", async () => {
-    state.activeWorkspace = { id: "ws-1", name: "Acme", role: "member" };
-    state.members = [{ id: "wm-1", email: "mate@x.co", createdAt: "now" }];
+  it("lists every teammate once with their workspaces", async () => {
+    state.roster = {
+      workspaces: [
+        { id: "ws-1", name: "Acme", members: [{ id: "wm-1", email: "mate@x.co", createdAt: "now" }] },
+        {
+          id: "ws-2",
+          name: "Side",
+          members: [
+            { id: "wm-2", email: "mate@x.co", createdAt: "now" },
+            { id: "wm-3", email: "other@x.co", createdAt: "now" },
+          ],
+        },
+      ],
+    };
     renderCard();
     expect(await screen.findByText("mate@x.co")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    // One row per email even when present in several workspaces.
+    expect(screen.getAllByText("mate@x.co")).toHaveLength(1);
+    expect(screen.getByText("other@x.co")).toBeInTheDocument();
+  });
+
+  it("invites to all workspaces and reports the result", async () => {
+    renderCard();
+    await screen.findByText("No teammates yet.");
+    fireEvent.change(screen.getByLabelText("Teammate email"), { target: { value: "new@x.co" } });
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    await waitFor(() => expect(teamApi.inviteToAllWorkspaces).toHaveBeenCalledWith("tok-1", "new@x.co"));
+    expect(await screen.findByText(/added to 1 workspace/)).toBeInTheDocument();
+  });
+
+  it("removes from everywhere and refreshes the roster", async () => {
+    state.roster = {
+      workspaces: [{ id: "ws-1", name: "Acme", members: [{ id: "wm-1", email: "mate@x.co", createdAt: "now" }] }],
+    };
+    renderCard();
+    expect(await screen.findByText("mate@x.co")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(teamApi.removeTeamMember).toHaveBeenCalledWith("tok-1", "mate@x.co"));
+    await waitFor(() => expect(teamApi.listTeamRoster).toHaveBeenCalledTimes(2));
   });
 });
