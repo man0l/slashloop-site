@@ -427,7 +427,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
               type="button"
               onClick={startRecreate}
               disabled={recreating}
-              title="Costs 2 credits. Gemini picks the cuts, gpt-image-2.5-sunburst recreates them without overlays."
+              title="Costs 2 credits. Gemini picks the cuts, Muse Image recreates them without overlays."
               className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
               style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
             >
