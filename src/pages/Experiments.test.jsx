@@ -37,6 +37,18 @@ it("saves edited brief with its expected revision and uses the refreshed revisio
   fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
   await waitFor(() => expect(api.mutateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", expect.objectContaining({ variants: [{ id: "v1", revision: 3 }] })));
 });
+it("places completed results before collapsed evidence and labels saved inputs", async () => {
+  experiment.status = "completed";
+  experiment.variants[0].status = "done";
+  experiment.variants[0].slides = [0, 1, 2].map((index) => ({ index, status: "done", url: `https://example.test/${index}.jpg` }));
+  mount();
+  const results = await screen.findByRole("heading", { name: "Generated results" });
+  const evidence = screen.getByText("Source analysis & pattern report").closest("details");
+  expect(evidence).not.toHaveAttribute("open");
+  expect(results.compareDocumentPosition(evidence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByText("Your saved inputs & rules")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Schedule this variant" })).toBeEnabled();
+});
 it("blocks an estimate over the explicit credit ceiling", async () => {
   api.estimateExperiment.mockResolvedValue({ totalCredits: 99, remainingCredits: 200 }); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("checkbox", { name: "Select for generation" })); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" }));
   expect(await screen.findByRole("button", { name: "Approve & start generation" })).toBeDisabled(); expect(api.mutateExperiment).not.toHaveBeenCalled();

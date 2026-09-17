@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { T, fD } from "../lib/theme.js";
-import { errorText } from "../lib/experiments.js";
+import { errorText, hasUnknownOutcome } from "../lib/experiments.js";
 import { ExperimentButton, ExperimentField, experimentInputStyle } from "./ExperimentCreate.jsx";
 
-export default function ExperimentVariant({ variant, index, selected, selectable, busy, onSelect, onSave, onDirty, onDownload, onSchedule }) {
+const FIELD_LABELS = { concept: "Concept", hook: "Hook", character: "Character", visualStyle: "Visual style", caption: "Caption", cta: "Call to action", slides: "Slide structure", lockedConstraints: "Keep unchanged" };
+const showValue = (value) => typeof value === "string" ? value : JSON.stringify(value ?? "Not specified");
+export default function ExperimentVariant({ variant, baseline, expectedSlideCount, index, selected, selectable, busy, onSelect, onSave, onDirty, onDownload, onSchedule }) {
   const [brief, setBrief] = useState(() => structuredClone(variant.brief ?? {}));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -17,14 +19,22 @@ export default function ExperimentVariant({ variant, index, selected, selectable
     finally { setSaving(false); }
   }
   const slides = [...(variant.slides ?? [])].sort((a, b) => a.index - b.index);
-  const images = slides.filter((s) => s.url && !s.error).map((s) => s.url);
-  const finished = slides.length > 0 && images.length === slides.length;
+  const images = slides.filter((s) => s.url && !s.error && ["done", "completed"].includes(s.status)).map((s) => s.url);
+  const expected = Math.max(expectedSlideCount || 0, variant.brief?.slides?.length || 0);
+  const finished = ["done", "completed"].includes(variant.status) && !variant.error && !hasUnknownOutcome(variant.error) && !slides.some((s) => hasUnknownOutcome(s.error)) && expected > 0 && slides.length === expected && images.length === expected && slides.every((s, i) => s.index === i);
+  const differences = baseline ? Object.keys(FIELD_LABELS).filter((key) => JSON.stringify(variant.brief?.[key]) !== JSON.stringify(baseline.brief?.[key])) : [];
   return <article className="rounded-xl p-5 space-y-4 min-w-0" style={{ background: T.card, border: `1px solid ${selected ? T.teal : T.line}` }}>
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 style={{ ...fD, fontWeight: 800, fontSize: 20 }}>{variant.title || `Variant ${index + 1}`}</h3><p className="text-xs mt-1" style={{ color: T.muted }}>{index === 0 ? "Baseline" : variant.baselineId ? `Compared with ${variant.baselineId}` : "Variant"} · Revision {variant.revision} · {variant.status}</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected} disabled={!selectable || busy || dirty} onChange={onSelect} />Select for generation</label></div>
-    {variant.hypothesis && <p className="text-sm">{variant.hypothesis}</p>}
-    {!!variant.changedVariables?.length && <div className="flex flex-wrap gap-2">{variant.changedVariables.map((v, i) => <span key={i} className="rounded-full px-3 py-1 text-xs" style={{ background: T.paper }}>{v.name}: {v.value}</span>)}</div>}
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 style={{ ...fD, fontWeight: 800, fontSize: 20 }}>{variant.title || `Variant ${index + 1}`}</h3><p className="text-xs mt-1" style={{ color: T.muted }}>{index === 0 ? "Baseline · your reference version" : baseline ? "Compared with baseline" : "Alternative"} · Revision {variant.revision} · {variant.status === "done" ? "Images complete" : variant.status}</p></div>{!slides.length && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected} disabled={!selectable || busy || dirty} onChange={onSelect} />Select for generation</label>}</div>
+    {slides.length > 0 && <section aria-label={`${variant.title || "Variant"} images`}>
+      <p className="text-sm mb-3" style={{ color: T.muted }}>{images.length}/{expected || slides.length} images ready</p>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>{slides.map((slide, i) => <figure key={slide.index ?? i} className="min-w-0"><div className="rounded-lg flex items-center justify-center overflow-hidden" style={{ background: T.paper, aspectRatio: "9/16", border: `1px solid ${T.line}` }}>{slide.url ? <a href={slide.url} target="_blank" rel="noreferrer" className="w-full h-full" aria-label={`Open slide ${i + 1} full size`}><img src={slide.url} alt={slide.overlayText || `Generated slide ${i + 1}`} loading="lazy" className="w-full h-full object-contain" /></a> : <span className="text-xs p-3 text-center" style={{ color: T.muted }}>{slide.status || "Waiting"}</span>}</div><figcaption className="text-xs mt-2" style={{ color: slide.error ? "#9B2C23" : T.muted }}>Slide {i + 1} · {slide.status}{slide.error ? ` · ${errorText(slide.error)}` : ""}</figcaption></figure>)}</div>
+      <div className="flex flex-wrap gap-2 mt-4"><ExperimentButton disabled={!images.length} onClick={() => onDownload(variant, images)}>Download ZIP{!finished ? " (ready images)" : ""}</ExperimentButton><ExperimentButton disabled={!finished || busy} onClick={() => onSchedule(variant, images)}>Schedule this variant</ExperimentButton></div>
+    </section>}
+    {baseline && <p className="text-sm" style={{ color: T.teal }}>Changed from baseline: {differences.map((key) => FIELD_LABELS[key]).join(", ") || "No saved brief fields differ"}. Comparison uses the saved brief, not the original title.</p>}
+    {differences.length > 0 && <details><summary className="cursor-pointer text-sm font-semibold">Compare exact changes</summary><dl className="space-y-4 mt-3 text-sm">{differences.map((key) => <div key={key}><dt className="font-semibold">{FIELD_LABELS[key]}</dt><dd className="grid sm:grid-cols-2 gap-3 mt-2"><div className="rounded-lg p-3 whitespace-pre-wrap break-words" style={{ background: T.paper }}><strong>Baseline</strong><p>{showValue(baseline.brief?.[key])}</p></div><div className="rounded-lg p-3 whitespace-pre-wrap break-words" style={{ background: T.paper }}><strong>This variant</strong><p>{showValue(variant.brief?.[key])}</p></div></dd></div>)}</dl></details>}
+    {variant.hypothesis && <details><summary className="cursor-pointer text-sm">Original planning hypothesis (not a measured result)</summary><p className="text-sm mt-2">{variant.hypothesis}</p></details>}
     {variant.error && <p role="alert" className="text-sm" style={{ color: "#9B2C23" }}>{errorText(variant.error)}</p>}
-    <details open={dirty}><summary className="cursor-pointer text-sm font-semibold">Review / edit brief {dirty ? "· Unsaved changes" : ""}</summary>
+    <details open={dirty}><summary className="cursor-pointer text-sm font-semibold">{slides.length ? "Saved generation brief" : "Review / edit brief"} {dirty ? "· Unsaved changes" : ""}</summary>
       <div className="mt-4 space-y-3"><fieldset disabled={busy || saving || !selectable} className="space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">{["concept", "hook", "character", "visualStyle", "caption", "cta"].map((key) => <ExperimentField key={key} label={key === "visualStyle" ? "Visual style" : key === "cta" ? "CTA" : key[0].toUpperCase() + key.slice(1)}><textarea rows={2} value={brief[key] ?? ""} onChange={(e) => edit({ ...brief, [key]: e.target.value })} style={experimentInputStyle} /></ExperimentField>)}</div>
         <ExperimentField label="Locked constraints"><textarea rows={2} value={Array.isArray(brief.lockedConstraints) ? brief.lockedConstraints.join("\n") : brief.lockedConstraints ?? ""} onChange={(e) => edit({ ...brief, lockedConstraints: e.target.value.split("\n") })} style={experimentInputStyle} /></ExperimentField>
@@ -34,10 +44,6 @@ export default function ExperimentVariant({ variant, index, selected, selectable
       {problem && <p role="alert" className="text-sm" style={{ color: "#9B2C23" }}>{problem}</p>}
       </div>
     </details>
-    {slides.length > 0 && <section aria-label={`${variant.title || "Variant"} images`}>
-      <p className="text-sm mb-3" style={{ color: T.muted }}>{images.length}/{slides.length} images ready</p>
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>{slides.map((slide, i) => <figure key={slide.index ?? i} className="min-w-0"><div className="rounded-lg flex items-center justify-center overflow-hidden" style={{ background: T.paper, aspectRatio: "3/4", border: `1px solid ${T.line}` }}>{slide.url ? <a href={slide.url} target="_blank" rel="noreferrer" className="w-full h-full" aria-label={`Open slide ${i + 1} full size`}><img src={slide.url} alt={slide.overlayText || `Generated slide ${i + 1}`} loading="lazy" className="w-full h-full object-contain" /></a> : <span className="text-xs p-3 text-center" style={{ color: T.muted }}>{slide.status || "Waiting"}</span>}</div><figcaption className="text-xs mt-2" style={{ color: slide.error ? "#9B2C23" : T.muted }}>Slide {i + 1} · {slide.status}{slide.error ? ` · ${errorText(slide.error)}` : ""}</figcaption></figure>)}</div>
-      <div className="flex flex-wrap gap-2 mt-4"><ExperimentButton disabled={!images.length} onClick={() => onDownload(variant, images)}>Download ZIP{!finished ? " (ready images)" : ""}</ExperimentButton><ExperimentButton disabled={!finished || busy} onClick={() => onSchedule(variant, images)}>Schedule this variant</ExperimentButton></div>
-    </section>}
+
   </article>;
 }
