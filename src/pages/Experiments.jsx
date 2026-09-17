@@ -77,7 +77,20 @@ export function ExperimentList({ accessToken, workspaceId }) {
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
   if (!query.data.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
-  return <div className="space-y-3">{query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId).map((e) => <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl p-5 hover:shadow-sm" style={panel}><div className="flex flex-wrap items-center justify-between gap-3"><h2 style={{ ...fD, fontSize: 20, fontWeight: 800 }}>{e.instructions?.goal || e.title || "Untitled experiment"}</h2><Status status={e.status} /></div><p className="text-sm mt-3" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0} variants · {e.slideCount ?? "—"} slides each · {e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits{e.createdAt ? ` · ${new Date(e.createdAt).toLocaleDateString()}` : ""}</p></Link>)}</div>;
+  const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
+  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId).map((e) => {
+    const thumbs = thumbsOf(e);
+    return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow" style={panel}>
+      <div className="flex" style={{ height: 76 }}>
+        {thumbs.length ? thumbs.map((url) => <img key={url} src={url} alt="" loading="lazy" className="min-w-0 flex-1 object-cover h-full" style={{ borderRight: `1px solid ${T.line}` }} />) : <div className="w-full h-full flex items-center justify-center text-xl" style={{ background: T.paper, color: T.line }}>▨</div>}
+      </div>
+      <div className="p-4 space-y-2">
+        <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{e.instructions?.goal || e.title || "Untitled experiment"}</h2>
+        <div className="flex items-center justify-between gap-2"><Status status={e.status} /><span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span></div>
+        <p className="text-xs m-0" style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? new Date(e.createdAt).toLocaleDateString() : ""}</p>
+      </div>
+    </Link>;
+  })}</div>;
 }
 
 export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
