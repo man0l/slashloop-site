@@ -136,6 +136,16 @@ it("hides per-job retry once the manual attempt limit is reached", async () => {
   await screen.findByText(/A provider outcome is unknown/);
   expect(screen.queryByRole("button", { name: "Retry slide 1" })).not.toBeInTheDocument();
 });
+it("declares completion clearly and suppresses stale unknown warnings", async () => {
+  experiment.status = "completed";
+  experiment.variants[0].status = "done";
+  experiment.variants[0].error = "provider_outcome_unknown";
+  experiment.variants[0].slides = [0, 1, 2].map((index) => ({ index, status: "done", url: `https://example.test/${index}.jpg` }));
+  mount();
+  expect(await screen.findByText(/Experiment complete/)).toBeInTheDocument();
+  expect(screen.queryByText(/A provider outcome is unknown/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Estimate selected generation" })).not.toBeInTheDocument();
+});
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("checkbox", { name: "Select for generation" })); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
   fireEvent.click(await screen.findByRole("button", { name: "Recheck original request" }));
