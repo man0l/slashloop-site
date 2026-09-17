@@ -10,16 +10,26 @@ function mount(videoIds = ["original1"]) { client = new QueryClient(); render(<Q
 beforeEach(() => vi.clearAllMocks()); afterEach(() => { cleanup(); client?.clear(); });
 it("starts the experiment in one click: creates the draft and approves planning", async () => {
   createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
-  fireEvent.change(screen.getByLabelText("Goal"), { target: { value: "Improve swipe rate" } });
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Improve swipe rate" } });
   expect(screen.queryByLabelText("Credit ceiling")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Start experiment/ })).toHaveTextContent("credits");
   fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
   await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ workspaceId: "w1", videoIds: ["original1"], maxCredits: expect.any(Number), variantCount: 3, slideCount: 5, idempotencyKey: expect.any(String), instructions: expect.objectContaining({ mode: "controlled", variables: ["hook"], lockedConstraints: [] }) })));
   await waitFor(() => expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "e1", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) })));
 });
+it("shows live validation while the form is incomplete", () => {
+  mount();
+  const btn = screen.getByRole("button", { name: /Start experiment/ });
+  expect(btn).toBeDisabled();
+  expect(screen.getAllByText(/Goal is required/).length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Now valid" } });
+  expect(screen.getByLabelText(/^Goal/)).toBeValid();
+  expect(btn).toBeEnabled();
+  expect(screen.queryAllByText(/Goal is required/).length).toBe(0);
+});
 it("validates selection limits before draft dispatch", async () => {
-  mount(Array.from({ length: 21 }, (_, i) => String(i))); fireEvent.change(screen.getByLabelText("Goal"), { target: { value: "Test" } }); fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Select 1–20"); expect(createExperiment).not.toHaveBeenCalled();
+  mount(Array.from({ length: 21 }, (_, i) => String(i))); fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test" } }); fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  expect(screen.getByText(/Select 1–20 originals/)).toBeInTheDocument(); expect(createExperiment).not.toHaveBeenCalled();
 });
 it("fills an editable portrait example and sends only the visible instructions", async () => {
   createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
@@ -27,7 +37,7 @@ it("fills an editable portrait example and sends only the visible instructions",
   expect(screen.getByLabelText("What do you want to change?")).toHaveValue("visualStyle");
   expect(screen.getByLabelText("Variants (baseline included)")).toHaveValue(2);
   expect(screen.getByLabelText("Slides per variant")).toHaveValue(3);
-  fireEvent.change(screen.getByLabelText("Goal"), { target: { value: "My edited portrait test" } });
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "My edited portrait test" } });
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("My edited portrait test");
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("6 images");
   fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));

@@ -35,6 +35,14 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
   const est = estimateExperimentCredits(videoIds.length, Number(form.variantCount) || 0, Number(form.slideCount) || 0);
   // Safety cap stays mandatory server-side; derived automatically instead of asked.
   const autoCap = Math.max(30, Math.ceil((est.total * 2) / 10) * 10);
+  // Live validation: each field reports its own problem as you type.
+  const errors = {
+    goal: form.goal.trim() ? "" : "Goal is required — what should the experiment find out?",
+    sources: videoIds.length >= 1 && videoIds.length <= 20 ? "" : `Select 1–20 originals in Gallery (currently ${videoIds.length}).`,
+    variantCount: Number.isInteger(Number(form.variantCount)) && Number(form.variantCount) >= 1 && Number(form.variantCount) <= 12 ? "" : "Choose 1–12 variants.",
+    slideCount: Number.isInteger(Number(form.slideCount)) && Number(form.slideCount) >= 3 && Number(form.slideCount) <= 8 ? "" : "Choose 3–8 slides per variant.",
+  };
+  const firstProblem = errors.goal || errors.sources || errors.variantCount || errors.slideCount || "";
   async function submit(event) {
     event.preventDefault();
     if (inFlight.current) return;
@@ -69,7 +77,8 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
         <ExperimentField label="Start from an example"><select defaultValue="" disabled={busy} onChange={(e) => { const example = EXAMPLES[e.target.value]; if (example) { const { label, ...values } = example; setForm((prev) => ({ ...EMPTY_FORM, ...values, brand: prev.brand, language: prev.language, maxCredits: prev.maxCredits })); } }} style={experimentInputStyle}><option value="" disabled>Choose an example, or write your own below</option>{Object.entries(EXAMPLES).map(([id, example]) => <option key={id} value={id}>{example.label}</option>)}</select></ExperimentField>
         <p className="text-xs" style={{ color: T.muted }}>Replaces creative inputs. Keeps brand, language and credit cap.</p>
       </div>
-      <ExperimentField label="Goal"><input required value={form.goal} onChange={(e) => set("goal", e.target.value)} style={experimentInputStyle} placeholder="Find the hook that earns the first swipe" /></ExperimentField>
+      <ExperimentField label="Goal *"><input required value={form.goal} onChange={(e) => set("goal", e.target.value)} aria-invalid={!!errors.goal} style={{ ...experimentInputStyle, borderColor: errors.goal ? "#B3261E" : T.line }} placeholder="Find the hook that earns the first swipe" /></ExperimentField>
+      {errors.goal && <p role="status" className="text-xs -mt-3" style={{ color: "#B3261E" }}>✎ {errors.goal}</p>}
       <div className="grid sm:grid-cols-3 gap-4">{["brand", "audience", "language"].map((name) => <ExperimentField key={name} label={name[0].toUpperCase() + name.slice(1)}><input value={form[name]} onChange={(e) => set(name, e.target.value)} style={experimentInputStyle} /></ExperimentField>)}</div>
       <div className="grid sm:grid-cols-2 gap-4">
         <ExperimentField label="Creative direction"><textarea rows={3} value={form.direction} onChange={(e) => set("direction", e.target.value)} style={experimentInputStyle} /></ExperimentField>
@@ -78,7 +87,11 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
       <ExperimentField label="Test mode"><select value={form.mode} onChange={(e) => setForm((prev) => ({ ...prev, mode: e.target.value, variables: e.target.value === "controlled" ? [prev.variables.find((v) => !["concept", "slides"].includes(v)) || "hook"] : prev.variables }))} style={experimentInputStyle}><option value="controlled">One-variable comparison</option><option value="exploration">Explore combinations</option></select></ExperimentField>
       {form.mode === "controlled" ? <ExperimentField label="What do you want to change?"><select value={form.variables[0]} onChange={(e) => set("variables", [e.target.value])} style={experimentInputStyle}>{Object.entries(VARIABLES).filter(([key]) => !["concept", "slides"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></ExperimentField> : <fieldset><legend className="text-sm mb-2">Variables to test</legend><div className="flex flex-wrap gap-3">{Object.entries(VARIABLES).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.variables.includes(key)} onChange={() => set("variables", form.variables.includes(key) ? form.variables.filter((v) => v !== key) : [...form.variables, key])} />{label}</label>)}</div></fieldset>}
       <ExperimentField label="Desired variable values (optional)"><input value={form.customValues} onChange={(e) => set("customValues", e.target.value)} style={experimentInputStyle} placeholder="Hook: question vs bold claim; character: founder" /></ExperimentField>
-      <div className="grid sm:grid-cols-2 gap-4">{[["variantCount", "Variants (baseline included)", 1, 12], ["slideCount", "Slides per variant", 3, 8]].map(([key, label, min, max]) => <ExperimentField key={key} label={label}><input type="number" required min={min} max={max} step="1" value={form[key]} onChange={(e) => set(key, e.target.value)} style={experimentInputStyle} /></ExperimentField>)}</div>
+      <div className="grid sm:grid-cols-2 gap-4">{[["variantCount", "Variants (baseline included)", 1, 12, "variants"], ["slideCount", "Slides per variant", 3, 8, "slides"]].map(([key, label, min, max, unit]) => {
+        const num = Number(form[key]);
+        const bad = !Number.isInteger(num) || num < min || num > max;
+        return <ExperimentField key={key} label={label}><input type="number" required min={min} max={max} step="1" value={form[key]} aria-invalid={bad} onChange={(e) => set(key, e.target.value)} style={{ ...experimentInputStyle, borderColor: bad ? "#B3261E" : T.line }} />{bad && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ {min}–{max} {unit}</p>}</ExperimentField>;
+      })}</div>
       <p className="text-xs" style={{ color: T.muted }}>Auto stop at <strong>{autoCap} credits</strong> if anything runs away. Image generation is approved separately after brief review.</p>
       <section aria-label="What this experiment will produce" className="rounded-lg p-4 space-y-4" style={{ background: T.paper, border: `1px solid ${T.line}` }}>
         <h3 className="font-semibold">Output preview</h3>
@@ -94,7 +107,10 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
         <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{[["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || "Use the source patterns"], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Spending cap", `${autoCap} credits (automatic)`]].map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
       </section>
       {problem && <p role="alert" className="text-sm" style={{ color: "#9B2C23" }}>{problem}</p>}
-      <ExperimentButton primary type="submit" disabled={busy || !form.goal.trim()}>{busy ? "Starting…" : `✨ Start experiment · ≈${est.start} credits`}</ExperimentButton>
+      <div className="flex flex-wrap items-center gap-3">
+        <ExperimentButton primary type="submit" disabled={busy || !!firstProblem} title={firstProblem || undefined}>{busy ? "Starting…" : `✨ Start experiment · ≈${est.start} credits`}</ExperimentButton>
+        {firstProblem && !busy && <span className="text-xs" style={{ color: "#B3261E" }}>✎ {firstProblem}</span>}
+      </div>
     </form>
   </section>;
 }
