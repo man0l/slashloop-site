@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { T, fD } from "../lib/theme.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -9,10 +9,11 @@ import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { ExperimentButton } from "../components/ExperimentCreate.jsx";
 import ExperimentVariant from "../components/ExperimentVariant.jsx";
 import { experimentKey, useExperimentDetail, useExperimentList } from "../lib/useExperiments.js";
-import { errorText, estimateBlockReason, estimateExperiment, hasUnknownOutcome, isExperimentActive, mutateExperiment, mutationKey, updateExperimentVariant } from "../lib/experiments.js";
+import { errorText, deleteExperiment, estimateBlockReason, estimateExperiment, hasUnknownOutcome, isExperimentActive, mutateExperiment, mutationKey, updateExperimentVariant } from "../lib/experiments.js";
 import { downloadSlideshowZip } from "../lib/slideshowZip.js";
 import { ScheduleDrawer } from "../calendar/ScheduleDrawer.jsx";
 import { createApiAdapter } from "../lib/social.js";
+import { timeAgo } from "../lib/time.js";
 
 const panel = { background: T.card, border: `1px solid ${T.line}` };
 const displayValue = (value) => typeof value === "object" ? JSON.stringify(value) : String(value ?? "");
@@ -22,7 +23,7 @@ function Status({ status }) {
   const icon = ["completed", "done"].includes(status) ? "✓" : status === "failed" ? "!" : isExperimentActive({ status }) ? "●" : "";
   return <span className="rounded-full px-3 py-1 text-xs font-medium inline-flex items-center gap-1.5" style={{ background: T.paper, color: isExperimentActive({ status }) ? T.teal : T.ink }}>{icon && <span aria-hidden="true">{icon}</span>}{s}</span>;
 }
-function Chip({ children, tone }) { return <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: T.paper, color: tone || T.muted }}>{children}</span>; }
+function Chip({ children, tone, title }) { return <span title={title} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: T.paper, color: tone || T.muted }}>{children}</span>; }
 const STAGE_COLOR = { done: T.teal, failed: "#9B2C23", active: T.teal, pending: T.muted };
 function Stage({ label, note, state }) {
   const color = STAGE_COLOR[state] || T.muted;
@@ -74,20 +75,31 @@ export default function Experiments() {
 
 export function ExperimentList({ accessToken, workspaceId }) {
   const query = useExperimentList({ accessToken, workspaceId });
+  const qc = useQueryClient();
+  const [deleting, setDeleting] = useState("");
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
   if (!query.data.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
   const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
+  const onDelete = async (event, e) => {
+    event.preventDefault(); event.stopPropagation();
+    if (!window.confirm(`Delete “${e.instructions?.goal || "this experiment"}”? Its generated images are removed too.`)) return;
+    setDeleting(e.id);
+    try { await deleteExperiment(accessToken, workspaceId, e.id); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); }
+    catch (err) { window.alert(err.message || "Delete failed."); }
+    finally { setDeleting(""); }
+  };
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId).map((e) => {
     const thumbs = thumbsOf(e);
     return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow" style={panel}>
-      <div className="flex" style={{ height: 76 }}>
+      <div className="relative flex" style={{ height: 76 }}>
         {thumbs.length ? thumbs.map((url) => <img key={url} src={url} alt="" loading="lazy" className="min-w-0 flex-1 object-cover h-full" style={{ borderRight: `1px solid ${T.line}` }} />) : <div className="w-full h-full flex items-center justify-center text-xl" style={{ background: T.paper, color: T.line }}>▨</div>}
+        <button type="button" aria-label={`Delete ${e.instructions?.goal || "experiment"}`} title="Delete" disabled={deleting === e.id} onClick={(ev) => onDelete(ev, e)} className="absolute top-1.5 right-1.5 rounded-full w-6 h-6 text-xs font-bold leading-none" style={{ background: "rgba(255,255,255,.92)", color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
       </div>
       <div className="p-4 space-y-2">
         <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{e.instructions?.goal || e.title || "Untitled experiment"}</h2>
         <div className="flex items-center justify-between gap-2"><Status status={e.status} /><span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span></div>
-        <p className="text-xs m-0" style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? new Date(e.createdAt).toLocaleDateString() : ""}</p>
+        <p className="text-xs m-0" title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined} style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? timeAgo(e.createdAt) : ""}</p>
       </div>
     </Link>;
   })}</div>;
@@ -96,6 +108,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
 export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
   const query = useExperimentDetail({ accessToken, workspaceId, experimentId });
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [selected, setSelected] = useState([]);
   const [dirty, setDirty] = useState({});
   const [approval, setApproval] = useState(null);
@@ -105,6 +118,7 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
   const [allowPartial, setAllowPartial] = useState(false);
   const [schedule, setSchedule] = useState(null);
   const [uncertain, setUncertain] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const mounted = useRef(true);
   const lock = useRef(false);
   const estimateAbort = useRef(null);
@@ -196,10 +210,10 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
     <Link to="/experiments" className="text-sm underline">All experiments</Link>
     <section className="rounded-xl p-5 sm:p-6 space-y-4" style={panel}>
       <div className="flex flex-wrap justify-between gap-3"><h2 style={{ ...fD, fontSize: 26, fontWeight: 800 }}>{experiment.instructions?.goal || "Experiment"}</h2><Status status={experiment.status} /></div>
-      <div className="flex flex-wrap gap-2"><Chip>{experiment.instructions?.mode === "exploration" ? "Exploration" : "One-variable test"}</Chip><Chip>{experiment.variantCount} variants × {experiment.slideCount} slides</Chip><Chip>{experiment.creditsCharged ?? 0}/{experiment.maxCredits} credits used</Chip><Chip>Manual publishing</Chip></div>
+      <div className="flex flex-wrap gap-2"><Chip>{experiment.instructions?.mode === "exploration" ? "Exploration" : "One-variable test"}</Chip><Chip>{experiment.variantCount} variants × {experiment.slideCount} slides</Chip><Chip>{experiment.creditsCharged ?? 0}/{experiment.maxCredits} credits used</Chip><Chip>Manual publishing</Chip>{experiment.createdAt && <Chip title={new Date(experiment.createdAt).toLocaleString()}>started {timeAgo(experiment.createdAt)}</Chip>}</div>
       <Pipeline experiment={experiment} completedInputs={completedInputs} />
       <details><summary className="text-sm cursor-pointer">Your saved inputs & rules</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{Object.entries(experiment.instructions ?? {}).map(([key, value]) => <div key={key}><dt className="font-semibold">{({ goal: "Goal", brand: "Brand", audience: "Audience", language: "Language", direction: "Creative direction", lockedConstraints: "Keep unchanged", mode: "Test mode", variables: "What may change" })[key] || key}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{key === "mode" ? value === "controlled" ? "Change one thing at a time" : "Explore combinations" : key === "variables" ? value.map((v) => ({ visualStyle: "Visual style", cta: "Call to action" })[v] || v).join(", ") : Array.isArray(value) ? value.join("\n") : displayValue(value) || "Not specified"}</dd></div>)}</dl></details>
-      <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}</div>
+      <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}{!active && <ExperimentButton disabled={busy || deleting} onClick={async () => { if (!window.confirm("Delete this experiment? Its generated images are removed too.")) return; setDeleting(true); try { await deleteExperiment(accessToken, workspaceId, experimentId); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); navigate("/experiments"); } catch (err) { setProblem(err.message || "Delete failed."); } finally { setDeleting(false); } }}>{deleting ? "Deleting…" : "Delete"}</ExperimentButton>}</div>
       {active && <p role="status" className="text-sm" style={{ color: T.teal }}>Running in background · Cancel stops queued work only.</p>}
       {experiment.error && <p role="alert" style={{ color: "#9B2C23" }}>{errorText(experiment.error)}</p>}
     </section>

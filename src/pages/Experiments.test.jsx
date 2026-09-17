@@ -2,9 +2,11 @@ import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ExperimentDetail } from "./Experiments.jsx";
+import { ExperimentDetail, ExperimentList } from "./Experiments.jsx";
 import * as api from "../lib/experiments.js";
-vi.mock("../lib/experiments.js", async (original) => ({ ...await original(), getExperiment: vi.fn(), estimateExperiment: vi.fn(), mutateExperiment: vi.fn(), updateExperimentVariant: vi.fn() }));
+import { useExperimentList } from "../lib/useExperiments.js";
+vi.mock("../lib/experiments.js", async (original) => ({ ...await original(), getExperiment: vi.fn(), estimateExperiment: vi.fn(), mutateExperiment: vi.fn(), updateExperimentVariant: vi.fn(), deleteExperiment: vi.fn() }));
+vi.mock("../lib/useExperiments.js", async (original) => ({ ...await original(), useExperimentList: vi.fn() }));
 const base = () => ({ id: "e1", workspaceId: "w1", status: "review", updatedAt: "2026-09-16", instructions: { goal: "Test a better hook", mode: "controlled" }, maxCredits: 100, creditsCharged: 4, variantCount: 1, slideCount: 3, inputs: [{ videoId: "video1", status: "ready" }], report: { summary: "Strong opening contrast", patterns: [{ id: "p1", name: "Contrast", description: "Show before and after", sourceIds: ["video1"], evidence: [{ videoId: "video1", location: "opening", observation: "Immediate contrast" }] }] }, variants: [{ id: "v1", title: "Question hook", revision: 2, status: "ready", hypothesis: "A question invites a swipe", brief: { concept: "Morning routine", hook: "Need more time?", slides: [{ role: "hook", scene: "Desk", overlayText: "Before" }] }, slides: [] }] });
 let experiment;
 let client;
@@ -145,6 +147,19 @@ it("declares completion clearly and suppresses stale unknown warnings", async ()
   expect(await screen.findByText(/Experiment complete/)).toBeInTheDocument();
   expect(screen.queryByText(/A provider outcome is unknown/)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Estimate selected generation" })).not.toBeInTheDocument();
+});
+it("lists experiments as a thumbnail grid with relative dates and delete", async () => {
+  useExperimentList.mockReturnValue({ data: [{ id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "My grid test" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date(Date.now() - 7200 * 1000).toISOString(), variants: [{ slides: [{ index: 0, url: "https://example.test/a.jpg", status: "done" }] }] }], isPending: false, isError: false, refetch: vi.fn() });
+  api.deleteExperiment.mockResolvedValue({ deleted: true });
+  client = new QueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByText("My grid test")).toBeInTheDocument();
+  expect(document.querySelector("img")?.getAttribute("src")).toBe("https://example.test/a.jpg");
+  expect(screen.getByText(/2 hours ago/)).toBeInTheDocument();
+  vi.stubGlobal("confirm", () => true);
+  fireEvent.click(screen.getByRole("button", { name: /Delete/ }));
+  await waitFor(() => expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e9"));
+  vi.unstubAllGlobals();
 });
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("checkbox", { name: "Select for generation" })); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));

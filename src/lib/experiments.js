@@ -89,6 +89,10 @@ export function updateExperimentVariant(accessToken, workspaceId, id, variantId,
     method: "PATCH", accessToken, body: { workspaceId, revision, brief },
   });
 }
+export async function deleteExperiment(accessToken, workspaceId, id) {
+  requireScope(accessToken, workspaceId);
+  return apiFetch(pathFor(id), { method: "DELETE", accessToken, body: { workspaceId } });
+}
 export function estimateBlockReason(estimate, experiment) {
   if (!estimate || !Number.isFinite(estimate.totalCredits) || estimate.totalCredits < 0) return "A valid estimate is required.";
   if (!Number.isFinite(estimate.remainingCredits)) return "Available credits could not be verified.";
