@@ -196,8 +196,7 @@ describe("ScheduleDrawer media strip + prefill", () => {
     expect(screen.getByRole("img", { name: "media 1" }).getAttribute("src")).toBe("https://cdn.example/1.jpg");
 
     // Integration list loads asynchronously — wait for the toggles.
-    await waitFor(() => expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0));
-    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Demo TikTok/ }));
     fireEvent.click(screen.getByTestId("save-post"));
 
     await waitFor(() => expect(createGroup).toHaveBeenCalled());

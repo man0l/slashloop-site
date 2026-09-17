@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
+import ExperimentCreate, { ExperimentButton } from "../components/ExperimentCreate.jsx";
+import { SOURCE_LIMIT, toggleSource } from "../lib/experiments.js";
 import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, AlertBanner, Skeleton, Spinner, CloseIcon } from "../components/ui.jsx";
@@ -55,6 +57,13 @@ export default function Gallery() {
   const [analyzedBy, setAnalyzedBy] = useState("");
   const [hasHookTest, setHasHookTest] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const [selection, setSelection] = useState({ workspaceId: activeWorkspaceId, ids: [] });
+  const [showExperimentCreate, setShowExperimentCreate] = useState(false);
+  const experimentVideoIds = selection.workspaceId === activeWorkspaceId ? selection.ids : [];
+  useEffect(() => { setShowExperimentCreate(false); setSelection({ workspaceId: activeWorkspaceId, ids: [] }); }, [activeWorkspaceId, accessToken]);
+  function toggleExperimentVideo(id) {
+    setSelection({ workspaceId: activeWorkspaceId, ids: toggleSource(experimentVideoIds, id) });
+  }
 
   // The filter-select options; shared with the Sources page via the
   // ['sources', workspaceId] cache, so navigating between the two doesn't
@@ -154,6 +163,15 @@ export default function Gallery() {
       </div>
 
       <FirstRunSteps />
+      <div className="mt-6 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3" style={{ background: T.card, border: `1px solid ${T.line}` }}>
+        <div><p className="font-semibold text-sm">Turn patterns into experiments</p><p className="text-sm mt-1" style={{ color: T.muted }}>Select 1–20 originals below. {experimentVideoIds.length}/{SOURCE_LIMIT} selected.</p></div>
+        <div className="flex flex-wrap gap-3 items-center">
+          {experimentVideoIds.length > 0 && <ExperimentButton onClick={() => { setSelection({ workspaceId: activeWorkspaceId, ids: [] }); setShowExperimentCreate(false); }}>Clear selection</ExperimentButton>}
+          <ExperimentButton primary disabled={!experimentVideoIds.length} onClick={() => setShowExperimentCreate(true)}>Create experiment</ExperimentButton>
+          <Link to="/experiments" className="text-sm underline">View experiments</Link>
+        </div>
+      </div>
+      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} onClose={() => setShowExperimentCreate(false)} />}
 
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -256,15 +274,13 @@ export default function Gallery() {
               aria-busy={dimmed}
             >
               {cards.map((c, i) => (
-                <GalleryCard
-                  key={c.id}
-                  card={c}
-                  index={i + 1}
-                  accessToken={accessToken}
-                  workspaceId={activeWorkspaceId}
-                  sources={sources}
-                  galleryCards={cards}
-                />
+                <div key={c.id} className="min-w-0">
+                  <label className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: T.card, border: `1px solid ${experimentVideoIds.includes(c.id) ? T.teal : T.line}` }}>
+                    <input type="checkbox" aria-label={`Select original ${i + 1} for experiment`} checked={experimentVideoIds.includes(c.id)} disabled={dimmed || showExperimentCreate || (!experimentVideoIds.includes(c.id) && experimentVideoIds.length >= SOURCE_LIMIT)} onChange={() => toggleExperimentVideo(c.id)} />
+                    Use original in experiment
+                  </label>
+                  <GalleryCard card={c} index={i + 1} accessToken={accessToken} workspaceId={activeWorkspaceId} sources={sources} galleryCards={cards} />
+                </div>
               ))}
             </div>
             {cards.length >= limit && (

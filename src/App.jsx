@@ -19,6 +19,7 @@ const EmailSettings = lazy(() => import("./pages/EmailSettings.jsx"));
 const Sources = lazy(() => import("./pages/Sources.jsx"));
 const Discover = lazy(() => import("./pages/Discover.jsx"));
 const Gallery = lazy(() => import("./pages/Gallery.jsx"));
+const Experiments = lazy(() => import("./pages/Experiments.jsx"));
 const HookTests = lazy(() => import("./pages/HookTests.jsx"));
 const Studio = lazy(() => import("./pages/Studio.jsx"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage.jsx"));
@@ -78,6 +79,7 @@ function Nav() {
       <Link to="/discover" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Discover</Link>
       <Link to="/sources" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Sources</Link>
       <Link to="/gallery" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Gallery</Link>
+      <Link to="/experiments" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Experiments</Link>
       <Link to="/tests" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Hook tests</Link>
       <Link to="/studio" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Studio</Link>
       <Link to="/calendar" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 13, color: T.ink }}>Calendar</Link>
@@ -91,7 +93,7 @@ function Nav() {
         {/* Desktop: full inline nav. Hidden below sm — a signed-in user's
             Sources/Gallery links have nowhere else to live at that width, so
             the hamburger below is the only way to reach them on mobile. */}
-        <div className="hidden sm:flex items-center gap-4">
+        <div className="hidden xl:flex items-center gap-4">
           <Link to="/pricing" style={{ ...fM, fontSize: 13, color: T.ink }}>Pricing</Link>
           <Link to="/agent-setup" style={{ ...fM, fontSize: 13, color: T.ink }}>AI setup</Link>
           {loading ? (
@@ -122,7 +124,7 @@ function Nav() {
         </div>
         <button
           type="button"
-          className="sm:hidden p-1.5"
+          className="xl:hidden p-1.5"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
@@ -134,7 +136,7 @@ function Nav() {
 
       {menuOpen && (
         <div
-          className="sm:hidden absolute left-0 right-0 top-full mx-5 mt-2 rounded-xl p-4 flex flex-col gap-3.5 z-20"
+          className="xl:hidden absolute left-0 right-0 top-full mx-5 mt-2 rounded-xl p-4 flex flex-col gap-3.5 z-20"
           style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
         >
           <Link to="/pricing" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Pricing</Link>
@@ -208,6 +210,8 @@ export default function App() {
             <Route path="/discover" element={<Discover />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/gallery" element={<Gallery />} />
+            <Route path="/experiments" element={<Experiments />} />
+            <Route path="/experiments/:experimentId" element={<Experiments />} />
             <Route path="/tests" element={<HookTests />} />
             <Route path="/studio" element={<Studio />} />
             <Route path="/calendar" element={<CalendarPage />} />
