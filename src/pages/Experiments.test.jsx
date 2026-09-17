@@ -85,6 +85,22 @@ it("blocks paid actions for a paused experiment even without an error message", 
   expect(screen.queryByRole("button", { name: /Estimate retry/ })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Estimate selected generation" })).toBeDisabled();
 });
+it("does not mark downstream stages failed when a source fails", async () => {
+  experiment = { ...base(), status: "failed", report: null, variants: [], inputs: [{ videoId: "video1", status: "failed" }] };
+  mount();
+  expect(await screen.findByRole("listitem", { name: "Sources: failed, 0/1" })).toBeInTheDocument();
+  expect(screen.getByRole("listitem", { name: "Patterns: pending" })).toBeInTheDocument();
+  expect(screen.getByRole("listitem", { name: "Briefs: pending" })).toBeInTheDocument();
+  expect(screen.getByRole("listitem", { name: "Images: pending, 0 ready" })).toBeInTheDocument();
+});
+it("counts only generated decks in image progress", async () => {
+  experiment.variantCount = 2;
+  experiment.variants[0].status = "done";
+  experiment.variants[0].slides = [0, 1, 2].map((index) => ({ index, status: "done", url: `https://example.test/${index}.jpg` }));
+  experiment.variants.push({ ...base().variants[0], id: "v2", title: "Unused draft", status: "draft" });
+  mount();
+  expect(await screen.findByRole("listitem", { name: "Images: done, 3/3 ready" })).toBeInTheDocument();
+});
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("checkbox", { name: "Select for generation" })); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
   fireEvent.click(await screen.findByRole("button", { name: "Recheck original request" }));

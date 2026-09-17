@@ -32,6 +32,9 @@ it("fills an editable portrait example and sends only the visible instructions",
   fireEvent.change(screen.getByLabelText("Credit ceiling"), { target: { value: "30" } });
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("My edited portrait test");
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("6 images");
+  expect(screen.getByText("Review exact inputs").closest("details")).not.toHaveAttribute("open");
+  fireEvent.click(screen.getByText("Review exact inputs"));
+  expect(screen.getByText("Review exact inputs").closest("details")).toHaveAttribute("open");
   fireEvent.click(screen.getByRole("button", { name: "Save experiment draft" }));
   await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ variantCount: 2, slideCount: 3, maxCredits: 30, instructions: expect.objectContaining({ goal: "My edited portrait test", variables: ["visualStyle"], direction: expect.stringContaining("Desired variable values: Natural everyday") }) })));
 });
@@ -49,7 +52,8 @@ it("keeps the user's spending ceiling when replacing an example", () => {
 });
 it("describes a baseline-only setup without claiming a comparison", () => {
   mount(); fireEvent.change(screen.getByLabelText("Variants (baseline included)"), { target: { value: "1" } });
-  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("no alternative to compare yet");
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("1 baseline only");
+  expect(screen.queryByText("Hook changes")).not.toBeInTheDocument();
 });
 it("allows concept/slide exploration but strips them when returning to controlled", () => {
   mount(); fireEvent.change(screen.getByLabelText("Test mode"), { target: { value: "exploration" } }); fireEvent.click(screen.getByRole("checkbox", { name: "Concept / angle" })); fireEvent.change(screen.getByLabelText("Test mode"), { target: { value: "controlled" } }); expect(screen.queryByRole("checkbox", { name: "Concept / angle" })).not.toBeInTheDocument();
