@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { T, fD } from "../lib/theme.js";
 import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
-import { SectionLabel, Spinner } from "../components/ui.jsx";
+import { SectionLabel, Spinner, ConfirmDialog } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { ExperimentButton } from "../components/ExperimentCreate.jsx";
 import ExperimentVariant from "../components/ExperimentVariant.jsx";
@@ -77,32 +77,35 @@ export function ExperimentList({ accessToken, workspaceId }) {
   const query = useExperimentList({ accessToken, workspaceId });
   const qc = useQueryClient();
   const [deleting, setDeleting] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
   if (!query.data.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
   const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
-  const onDelete = async (event, e) => {
-    event.preventDefault(); event.stopPropagation();
-    if (!window.confirm(`Delete “${e.instructions?.goal || "this experiment"}”? Its generated images are removed too.`)) return;
-    setDeleting(e.id);
-    try { await deleteExperiment(accessToken, workspaceId, e.id); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); }
+  const onDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(pendingDelete.id);
+    try { await deleteExperiment(accessToken, workspaceId, pendingDelete.id); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); }
     catch (err) { window.alert(err.message || "Delete failed."); }
-    finally { setDeleting(""); }
+    finally { setDeleting(""); setPendingDelete(null); }
   };
-  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId).map((e) => {
-    const thumbs = thumbsOf(e);
-    return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow" style={panel}>
-      <div className="relative flex" style={{ height: 76 }}>
-        {thumbs.length ? thumbs.map((url) => <img key={url} src={url} alt="" loading="lazy" className="min-w-0 flex-1 object-cover h-full" style={{ borderRight: `1px solid ${T.line}` }} />) : <div className="w-full h-full flex items-center justify-center text-xl" style={{ background: T.paper, color: T.line }}>▨</div>}
-        <button type="button" aria-label={`Delete ${e.instructions?.goal || "experiment"}`} title="Delete" disabled={deleting === e.id} onClick={(ev) => onDelete(ev, e)} className="absolute top-1.5 right-1.5 rounded-full w-6 h-6 text-xs font-bold leading-none" style={{ background: "rgba(255,255,255,.92)", color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
-      </div>
-      <div className="p-4 space-y-2">
-        <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{e.instructions?.goal || e.title || "Untitled experiment"}</h2>
-        <div className="flex items-center justify-between gap-2"><Status status={e.status} /><span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span></div>
-        <p className="text-xs m-0" title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined} style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? timeAgo(e.createdAt) : ""}</p>
-      </div>
-    </Link>;
-  })}</div>;
+  return <div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId).map((e) => {
+      const thumbs = thumbsOf(e);
+      return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow" style={panel}>
+        <div className="relative flex" style={{ height: 76 }}>
+          {thumbs.length ? thumbs.map((url) => <img key={url} src={url} alt="" loading="lazy" className="min-w-0 flex-1 object-cover h-full" style={{ borderRight: `1px solid ${T.line}` }} />) : <div className="w-full h-full flex items-center justify-center text-xl" style={{ background: T.paper, color: T.line }}>▨</div>}
+          <button type="button" aria-label={`Delete ${e.instructions?.goal || "experiment"}`} title="Delete" disabled={deleting === e.id} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setPendingDelete(e); }} className="absolute top-1.5 right-1.5 rounded-full w-6 h-6 text-xs font-bold leading-none" style={{ background: "rgba(255,255,255,.92)", color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
+        </div>
+        <div className="p-4 space-y-2">
+          <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{e.instructions?.goal || e.title || "Untitled experiment"}</h2>
+          <div className="flex items-center justify-between gap-2"><Status status={e.status} /><span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span></div>
+          <p className="text-xs m-0" title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined} style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? timeAgo(e.createdAt) : ""}</p>
+        </div>
+      </Link>;
+    })}</div>
+    <ConfirmDialog open={!!pendingDelete} danger busy={deleting !== ""} title="Delete experiment?" message={pendingDelete ? `Delete “${pendingDelete.instructions?.goal || "this experiment"}”? Its generated images are removed too. This cannot be undone.` : ""} confirmLabel="Delete" onConfirm={onDelete} onCancel={() => setPendingDelete(null)} />
+  </div>;
 }
 
 export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
@@ -119,6 +122,7 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
   const [schedule, setSchedule] = useState(null);
   const [uncertain, setUncertain] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const mounted = useRef(true);
   const lock = useRef(false);
   const estimateAbort = useRef(null);
@@ -209,6 +213,12 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
     try { const count = await downloadSlideshowZip(images, { fileName: `experiment-${experimentId}-${variant.id}.zip` }); if (mounted.current) setNotice(`Downloaded ${count}/${images.length} ready images${count < images.length ? "; some images could not be fetched" : ""}.`); }
     catch (err) { if (mounted.current) setProblem(err.message); }
   }
+  async function removeExperiment() {
+    setDeleting(true);
+    try { await deleteExperiment(accessToken, workspaceId, experimentId); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); navigate("/experiments"); }
+    catch (err) { if (mounted.current) setProblem(err.message || "Delete failed."); }
+    finally { if (mounted.current) { setDeleting(false); setConfirmDelete(false); } }
+  }
   if (query.isPending) return <p role="status">Loading experiment…</p>;
   if (query.isError && !experiment) return <div role="alert"><p>{query.error.message}</p><Link to="/experiments" className="underline text-sm">Back to experiments</Link> <ExperimentButton onClick={() => query.refetch()}>Refresh status</ExperimentButton></div>;
   if (!experiment) return null;
@@ -222,7 +232,7 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
       <div className="flex flex-wrap gap-2"><Chip>{experiment.instructions?.mode === "exploration" ? "Exploration" : "One-variable test"}</Chip><Chip>{experiment.variantCount} variants × {experiment.slideCount} slides</Chip><Chip>{experiment.creditsCharged ?? 0}/{experiment.maxCredits} credits used</Chip><Chip>Manual publishing</Chip>{experiment.createdAt && <Chip title={new Date(experiment.createdAt).toLocaleString()}>started {timeAgo(experiment.createdAt)}</Chip>}</div>
       <Pipeline experiment={experiment} completedInputs={completedInputs} />
       <details><summary className="text-sm cursor-pointer">Your saved inputs & rules</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{Object.entries(experiment.instructions ?? {}).map(([key, value]) => <div key={key}><dt className="font-semibold">{({ goal: "Goal", brand: "Brand", audience: "Audience", language: "Language", direction: "Creative direction", lockedConstraints: "Keep unchanged", mode: "Test mode", variables: "What may change" })[key] || key}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{key === "mode" ? value === "controlled" ? "Change one thing at a time" : "Explore combinations" : key === "variables" ? value.map((v) => ({ visualStyle: "Visual style", cta: "Call to action" })[v] || v).join(", ") : Array.isArray(value) ? value.join("\n") : displayValue(value) || "Not specified"}</dd></div>)}</dl></details>
-      <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}{!active && <ExperimentButton disabled={busy || deleting} onClick={async () => { if (!window.confirm("Delete this experiment? Its generated images are removed too.")) return; setDeleting(true); try { await deleteExperiment(accessToken, workspaceId, experimentId); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); navigate("/experiments"); } catch (err) { setProblem(err.message || "Delete failed."); } finally { setDeleting(false); } }}>{deleting ? "Deleting…" : "Delete"}</ExperimentButton>}</div>
+      <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}{!active && <ExperimentButton disabled={busy || deleting} onClick={() => setConfirmDelete(true)}>{deleting ? "Deleting…" : "Delete"}</ExperimentButton>}</div>
       {active && <p role="status" className="text-sm" style={{ color: T.teal }}>Running in background · Cancel stops queued work only.</p>}
       {experiment.error && <p role="alert" style={{ color: "#9B2C23" }}>{errorText(experiment.error)}</p>}
     </section>
@@ -240,6 +250,7 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
     {!active && experiment.status === "draft" && <section className="rounded-xl p-5 space-y-3" style={panel}><h2 className="font-semibold">Ready to find the patterns?</h2><p className="text-sm" style={{ color: T.muted }}>Review briefs before approving images.</p><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allowPartial} onChange={(e) => { setAllowPartial(e.target.checked); setApproval(null); }} />Allow planning from successfully analyzed sources if some fail</label><ExperimentButton primary disabled={busy || unknown || !!uncertain} onClick={() => prepare("plan", "plan", { allowPartial })}>Estimate analysis & planning</ExperimentButton></section>}
 
     {!active && !unknown && (["failed", "partial"].includes(experiment.status) || knownFailed.length > 0) && <section className="rounded-xl p-5 space-y-3" style={panel}><h2 className="font-semibold">Recover known failures</h2><p className="text-sm" style={{ color: T.muted }}>Completed images are kept.</p><ExperimentButton disabled={busy || anyDirty || !!uncertain} onClick={() => prepare("retry", knownFailed.length ? "generate" : "plan", knownFailed.length ? { variantIds: knownFailed.map((v) => v.id) } : {})}>Estimate retry of known failures</ExperimentButton></section>}
+    {confirmDelete && <ConfirmDialog open danger busy={deleting} title="Delete experiment?" message="Its generated images are removed too. This cannot be undone." confirmLabel="Delete" onConfirm={removeExperiment} onCancel={() => setConfirmDelete(false)} />}
     {schedule && <ScheduleDrawer key={schedule.variant.id} adapter={adapter} mode="create" mediaIsRecreated initialContent={schedule.variant.brief?.caption ?? ""} initialMedia={schedule.images.map((url) => ({ type: "image", url }))} initialDate={new Date()} onClose={() => setSchedule(null)} onSaved={() => { setSchedule(null); setNotice("Scheduling action saved. View Calendar for its publishing status."); }} onError={(err) => setProblem(err.message)} />}
   </div>;
 }

@@ -156,10 +156,10 @@ it("lists experiments as a thumbnail grid with relative dates and delete", async
   expect(await screen.findByText("My grid test")).toBeInTheDocument();
   expect(document.querySelector("img")?.getAttribute("src")).toBe("https://example.test/a.jpg");
   expect(screen.getByText(/2 hours ago/)).toBeInTheDocument();
-  vi.stubGlobal("confirm", () => true);
   fireEvent.click(screen.getByRole("button", { name: /Delete/ }));
+  expect(await screen.findByText("Delete experiment?")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e9"));
-  vi.unstubAllGlobals();
 });
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
