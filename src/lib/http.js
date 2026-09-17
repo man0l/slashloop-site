@@ -20,7 +20,7 @@ export class ApiError extends Error {
 /** Request ceiling: a hung API must surface as an error + Retry, never an
  *  endless skeleton (react-query never retries a still-pending query).
  *  Pass timeoutMs: 0 to opt out (paid creations: the server bounds the AI
- *  calls, and an aborted create leaves unknown state — see hookTests.js). */
+ *  calls, and an aborted create leaves unknown state). */
 const REQUEST_TIMEOUT_MS = 30_000;
 
 async function request(path, { method = "GET", accessToken, body, signal, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {

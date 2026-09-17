@@ -117,90 +117,7 @@ describe("GalleryCard — analyze flow", () => {
     renderCard();
     expect(screen.queryByText("You")).not.toBeInTheDocument();
   });
-
-  it("shows a hook-test badge with picked count when the card carries an open test", () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail);
-    renderCard(
-      <GalleryCard card={{ ...card, hookTest: { id: "ht-1", status: "picking", pickedCount: 2 } }} index={1} accessToken="tok-1" workspaceId="ws-1" />,
-    );
-    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 2 picked");
-    expect(screen.getByTestId("hook-test-badge")).toHaveAccessibleDescription(/picking/i);
-  });
-
-  it("shows the bare hook-test badge when nothing is picked yet", () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail);
-    renderCard(
-      <GalleryCard card={{ ...card, hookTest: { id: "ht-1", status: "picking", pickedCount: 0 } }} index={1} accessToken="tok-1" workspaceId="ws-1" />,
-    );
-    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 hook test");
-  });
-
-  it("no hook-test badge without an open test", () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail);
-    renderCard();
-    expect(screen.queryByTestId("hook-test-badge")).not.toBeInTheDocument();
-  });
-
-  it("a won test badges its winner instead of the pick count", () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail);
-    renderCard(
-      <GalleryCard card={{ ...card, hookTest: { id: "ht-1", status: "won", pickedCount: 2, winnerLabel: "C" } }} index={1} accessToken="tok-1" workspaceId="ws-1" />,
-    );
-    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 C won");
-    expect(screen.getByTestId("hook-test-badge")).toHaveAccessibleDescription(/opening C beat the original/i);
-  });
 });
-
-describe("GalleryCard — hook-test entry (server truth, not hover state)", () => {
-  // The start affordance keys off the gallery payload (analyzedBy / hookTest),
-  // so it must render before any hover hydration happens.
-  it("offers the paid start on an analyzed video with no open test", () => {
-    renderCard(<GalleryCard card={{ ...card, analyzedBy: "openrouter" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-    expect(screen.getByTestId("start-hook-test")).toBeInTheDocument();
-  });
-
-  it("offers no start on an un-analyzed video (the openings inherit an analysis)", () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail);
-    renderCard(<GalleryCard card={{ ...card }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-    expect(screen.queryByTestId("start-hook-test")).not.toBeInTheDocument();
-  });
-
-  it("offers no start when a test is already open — the badge is the way in", () => {
-    renderCard(
-      <GalleryCard
-        card={{ ...card, analyzedBy: "openrouter", hookTest: { id: "ht-1", status: "picking", pickedCount: 0 } }}
-        index={1}
-        accessToken="tok-1"
-        workspaceId="ws-1"
-      />,
-    );
-    expect(screen.queryByTestId("start-hook-test")).not.toBeInTheDocument();
-    expect(screen.getByTestId("hook-test-badge")).toBeInTheDocument();
-  });
-
-  it("a won test is archived — the card offers a fresh start beside its C-won badge", () => {
-    renderCard(
-      <GalleryCard
-        card={{ ...card, analyzedBy: "openrouter", hookTest: { id: "ht-1", status: "won", pickedCount: 2, winnerLabel: "C" } }}
-        index={1}
-        accessToken="tok-1"
-        workspaceId="ws-1"
-      />,
-    );
-    expect(screen.getByTestId("hook-test-badge")).toHaveTextContent("🧪 C won");
-    expect(screen.getByTestId("start-hook-test")).toBeInTheDocument();
-  });
-
-  it("clicking start opens the cost-confirming start dialog, not an immediate charge", async () => {
-    getVideoDetail.mockResolvedValue(unexploredDetail);
-    renderCard(<GalleryCard card={{ ...card, analyzedBy: "openrouter" }} index={1} accessToken="tok-1" workspaceId="ws-1" />);
-
-    fireEvent.click(screen.getByTestId("start-hook-test"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Start AI hook test" });
-    expect(within(dialog).getByText(/Costs 2 credits/)).toBeInTheDocument();
-    expect(analyzeVideo).not.toHaveBeenCalled();
-  });
 
   it("photo posts do not offer Download video and do not use a video player", () => {
     getVideoDetail.mockResolvedValue({ ...unexploredDetail, mediaUrl: null, isSlideshow: true, slideshowImages: [] });
@@ -536,7 +453,6 @@ describe("GalleryCard — hook-test entry (server truth, not hover state)", () =
     );
     expect(screen.queryByRole("button", { name: "Retry — last analysis failed" })).not.toBeInTheDocument();
   });
-});
 
 describe("GalleryCard — slideshow zip download", () => {
   const slides = ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"];

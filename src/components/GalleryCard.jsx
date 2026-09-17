@@ -26,22 +26,8 @@ import { createApiAdapter } from "../lib/social.js";
 import { ScheduleDrawer } from "../calendar/index.js";
 import AnalysisModal from "./AnalysisModal.jsx";
 import CreatorChip from "./CreatorChip.jsx";
-import HookTestPanel, { StartHookTestDialog } from "./HookTestPanel.jsx";
 
 const thumbStyle = { width: "100%", aspectRatio: "9/16", background: "#E7E8E3" };
-
-// Test statuses that still own the video — a won/closed test is archived and
-// stops blocking a fresh "Test hooks" start (the server allows re-testing).
-const ACTIVE_TEST_STATUSES = new Set(["setup", "picking", "posted"]);
-
-function hookTestBadge(test) {
-  const won = test.status === "won";
-  const text = won ? ` ${test.winnerLabel ?? ""} won`.replace("  ", " ") : test.pickedCount > 0 ? ` ${test.pickedCount} picked` : " hook test";
-  const title = won
-    ? `Hook test won${test.winnerLabel ? ` — opening ${test.winnerLabel} beat the original` : ""}`
-    : `Open AI hook test (${test.status})${test.pickedCount > 0 ? ` — ${test.pickedCount} picked` : ""}`;
-  return { text, title };
-}
 
 function Slideshow({ images }) {
   const [i, setI] = useState(0);
@@ -118,11 +104,6 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   const videoRef = useRef(null);
   const autoFetchStarted = useRef(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
-  // Hook-test surfaces. `startOpen` is the paid entry dialog (only offered for
-  // analyzed videos with no open test — server truth via card.analyzedBy /
-  // card.hookTest, never hover-hydration state); `testOpen` is the full panel.
-  const [startOpen, setStartOpen] = useState(false);
-  const [testOpen, setTestOpen] = useState(false);
   const [showRecreated, setShowRecreated] = useState(true);
   const [recreatePhase, setRecreatePhase] = useState("idle"); // idle | running | failed
   const [recreateError, setRecreateError] = useState(null);
@@ -301,26 +282,6 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
               You
             </span>
           )}
-          {card.hookTest && (() => {
-            const { text, title } = hookTestBadge(card.hookTest);
-            return (
-              <button
-                type="button"
-                onClick={() => setTestOpen(true)}
-                className="whitespace-nowrap rounded px-1.5 py-0.5 transition-opacity hover:opacity-80"
-                style={{
-                  fontWeight: 600,
-                  color: card.hookTest.status === "won" ? "#0F7B6C" : "#7C5CFF",
-                  background: card.hookTest.status === "won" ? "#EAF6F4" : "#F2EEFF",
-                  cursor: "pointer",
-                }}
-                title={title}
-                data-testid="hook-test-badge"
-              >
-                🧪{text}
-              </button>
-            );
-          })()}
           <span className="whitespace-nowrap">{fmt(card.views)} views</span>
           {card.postedAt != null && (
             <span className="whitespace-nowrap" title={new Date(card.postedAt).toLocaleString()}>
@@ -566,23 +527,6 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
           </div>
         )}
 
-        {/* Hook-test entry — keyed off server truth from the gallery payload
-            (analyzedBy / hookTest), so it doesn't depend on hover hydration.
-            Analyzed + no ACTIVE test -> offer the paid start (an archived
-            won/closed test doesn't block a fresh one); tested -> the badge
-            above is the way in. */}
-        {card.analyzedBy != null && !(card.hookTest && ACTIVE_TEST_STATUSES.has(card.hookTest.status)) && (
-          <button
-            type="button"
-            onClick={() => setStartOpen(true)}
-            data-testid="start-hook-test"
-            className="self-start rounded-md px-2.5 py-1.5 font-semibold transition-transform hover:-translate-y-0.5"
-            style={{ ...fB, fontSize: 12, border: "1.5px solid #7C5CFF", color: "#7C5CFF", background: "transparent" }}
-          >
-            🧪 Test hooks on this video · 2cr
-          </button>
-        )}
-
         <a href={card.url} target="_blank" rel="noreferrer" style={{ ...fM, fontSize: 11, color: T.muted }}>
           open on TikTok
         </a>
@@ -611,29 +555,6 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
             );
           }}
           onError={(err) => showToast(err?.message || "Scheduling failed.", { type: "error" })}
-        />
-      )}
-
-      {startOpen && (
-        <StartHookTestDialog
-          accessToken={accessToken}
-          workspaceId={workspaceId}
-          videoId={card.id}
-          onClose={() => setStartOpen(false)}
-          // Success AND "already open" (409) both land here — the panel shows
-          // whichever test the server has.
-          onStarted={() => {
-            setStartOpen(false);
-            setTestOpen(true);
-          }}
-        />
-      )}
-      {testOpen && (
-        <HookTestPanel
-          accessToken={accessToken}
-          workspaceId={workspaceId}
-          videoId={card.id}
-          onClose={() => setTestOpen(false)}
         />
       )}
     </article>

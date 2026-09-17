@@ -55,7 +55,6 @@ export default function Gallery() {
   const [minOutlier, setMinOutlier] = useState(0);
   const [minViews, setMinViews] = useState(0);
   const [analyzedBy, setAnalyzedBy] = useState("");
-  const [hasHookTest, setHasHookTest] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [selection, setSelection] = useState({ workspaceId: activeWorkspaceId, ids: [] });
   const [showExperimentCreate, setShowExperimentCreate] = useState(false);
@@ -75,7 +74,7 @@ export default function Gallery() {
   });
   const sources = sourcesQuery.data ?? [];
 
-  const filters = { sourceId: sourceId || undefined, videoId: videoFilter || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined, hasHookTest: hasHookTest || undefined };
+  const filters = { sourceId: sourceId || undefined, videoId: videoFilter || undefined, sortBy, minOutlier, minViews, analyzedBy: analyzedBy || undefined };
 
   const galleryQuery = useQuery({
     queryKey: ["gallery", activeWorkspaceId, filters, limit],
@@ -208,15 +207,6 @@ export default function Gallery() {
               <option value="">Any</option>
               <option value="openrouter">OpenRouter</option>
             </select>
-          </label>
-          <label className="flex items-center gap-1.5 self-end pb-2" style={{ ...fM, fontSize: 12, color: T.muted, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={hasHookTest}
-              onChange={(e) => updateFilter(setHasHookTest)(e.target.checked)}
-              style={{ accentColor: "#7C5CFF" }}
-            />
-            🧪 Has hook test
           </label>
           {busy && (
             <span className="self-center px-1" title="Loading…" aria-label="Loading">

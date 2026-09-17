@@ -23,7 +23,7 @@ const INSTALL_PROMPT = `Onboard me onto slashloop's MCP server.
    - Claude Code CLI: \`claude mcp add --transport http slashloop ${MCP_URL}\`
    - Claude Code plugin marketplace: \`/plugin marketplace add man0l/slashloop\`
    - Claude Desktop / Cowork / claude.ai: add "${MCP_URL}" as a custom connector (Settings → Connectors → Add custom connector).
-2. List the available tools and confirm these exist: discover, create_source, get_feed, analyze_video, create_brief, start_hook_test.
+2. List the available tools and confirm these exist: discover, create_source, get_feed, analyze_video, create_brief.
 3. Run \`suggest_sources\` for my niche and show me the top 3 suggestions — do NOT track anything yet, just report.
 4. Tell me my current credit balance if a tool exposes it, otherwise tell me to check ${SITE_URL}/account.
 
