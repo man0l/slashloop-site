@@ -11,6 +11,7 @@ vi.mock("./http.js", () => ({
 import {
   listWorkspaceMembers,
   inviteWorkspaceMember,
+  inviteToAllWorkspaces,
   removeWorkspaceMember,
   TeamApiError,
 } from "./team.js";
@@ -40,6 +41,15 @@ describe("team.js", () => {
     const [url, init] = apiFetch.mock.calls[0];
     expect(url).toBe("/api/workspaces/ws-1/members?email=mate%40x.co");
     expect(init.method).toBe("DELETE");
+  });
+
+  it("invites to all workspaces via the bulk action", async () => {
+    await inviteToAllWorkspaces("tok", "mate@x.co");
+    expect(apiFetch).toHaveBeenCalledWith("/api/workspaces?action=invite-all", {
+      method: "POST",
+      accessToken: "tok",
+      body: { email: "mate@x.co" },
+    });
   });
 
   it("re-exports ApiError as TeamApiError", () => {

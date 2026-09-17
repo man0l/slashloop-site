@@ -28,3 +28,17 @@ export function removeWorkspaceMember(accessToken, workspaceId, email) {
     { method: "DELETE", accessToken },
   );
 }
+
+/**
+ * POST /api/workspaces?action=invite-all { email }
+ * -> { email, workspaces: [{ id, name, status }] }
+ * One invite covering every workspace the caller owns; the teammate signs up
+ * with that email and all of them appear in their switcher.
+ */
+export function inviteToAllWorkspaces(accessToken, email) {
+  return apiFetch(`/api/workspaces?action=invite-all`, {
+    method: "POST",
+    accessToken,
+    body: { email },
+  });
+}

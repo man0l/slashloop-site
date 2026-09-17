@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth.jsx";
 import {
   listWorkspaceMembers,
   inviteWorkspaceMember,
+  inviteToAllWorkspaces,
   removeWorkspaceMember,
   TeamApiError,
 } from "../lib/team.js";
@@ -21,8 +22,10 @@ export default function TeamCard() {
   const queryClient = useQueryClient();
 
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteAll, setInviteAll] = useState(true);
   const [inviteStatus, setInviteStatus] = useState("idle"); // idle | loading | error
   const [inviteError, setInviteError] = useState("");
+  const [inviteResult, setInviteResult] = useState("");
   const [removingEmail, setRemovingEmail] = useState(null);
 
   const membersQuery = useQuery({
@@ -40,8 +43,22 @@ export default function TeamCard() {
     if (!inviteEmail.trim() || !activeWorkspaceId) return;
     setInviteStatus("loading");
     setInviteError("");
+    setInviteResult("");
     try {
-      await inviteWorkspaceMember(accessToken, activeWorkspaceId, inviteEmail.trim());
+      if (inviteAll) {
+        const result = await inviteToAllWorkspaces(accessToken, inviteEmail.trim());
+        const added = result.workspaces.filter((w) => w.status === "added").length;
+        const existing = result.workspaces.filter((w) => w.status === "already_member").length;
+        const skipped = result.workspaces.filter((w) => w.status === "skipped_limit").length;
+        const parts = [];
+        if (added) parts.push(`added to ${added} workspace${added === 1 ? "" : "s"}`);
+        if (existing) parts.push(`already in ${existing}`);
+        if (skipped) parts.push(`${skipped} full — not added`);
+        setInviteResult(`${result.email} ${parts.join(", ")}. They sign up with that email and everything appears in their switcher.`);
+      } else {
+        await inviteWorkspaceMember(accessToken, activeWorkspaceId, inviteEmail.trim());
+        setInviteResult(`${inviteEmail.trim()} can now access this workspace.`);
+      }
       setInviteEmail("");
       setInviteStatus("idle");
       await queryClient.invalidateQueries({ queryKey: ["team", activeWorkspaceId] });
@@ -69,8 +86,9 @@ export default function TeamCard() {
         {activeWorkspace?.role === "member" ? " (shared with you)" : ""}
       </p>
       <p className="mt-1" style={{ ...fM, fontSize: 12, color: T.muted }}>
-        Teammates sign in with their own Google account and get full access to this workspace —
-        sources, gallery, calendar, and credits. Billing stays with the owner.
+        Teammates sign in with their own Google account and get full access — sources,
+        gallery, calendar, and credits. Billing stays with the owner. By default an invite
+        covers all your workspaces; uncheck to share just this one.
       </p>
 
       {membersQuery.isLoading ? (
@@ -127,6 +145,20 @@ export default function TeamCard() {
               >
                 {inviteStatus === "loading" ? "Inviting…" : "Invite"}
               </button>
+              <label className="flex items-center gap-1.5" style={{ ...fM, fontSize: 12, color: T.muted }}>
+                <input
+                  type="checkbox"
+                  checked={inviteAll}
+                  onChange={(e) => setInviteAll(e.target.checked)}
+                  aria-label="Add to all my workspaces"
+                />
+                All my workspaces
+              </label>
+              {inviteResult && (
+                <p className="basis-full" style={{ ...fM, fontSize: 12, color: "#1F5C2E" }}>
+                  {inviteResult}
+                </p>
+              )}
               {inviteError && (
                 <p className="basis-full" style={{ ...fM, fontSize: 12, color: "#B3261E" }}>
                   {inviteError}
