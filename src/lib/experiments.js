@@ -61,10 +61,10 @@ export function createExperiment(accessToken, input) {
   if (problem) throw new Error(problem);
   return apiFetch("/api/experiments", { method: "POST", accessToken, body: input });
 }
-export async function estimateExperiment(accessToken, workspaceId, id, stage, variantIds, signal) {
+export async function estimateExperiment(accessToken, workspaceId, id, stage, variantIds, signal, taskIds) {
   requireScope(accessToken, workspaceId);
   const result = await apiFetch(`${pathFor(id)}/estimate`, {
-    method: "POST", accessToken, signal, body: { workspaceId, stage, ...(variantIds ? { variantIds } : {}) },
+    method: "POST", accessToken, signal, body: { workspaceId, stage, ...(variantIds ? { variantIds } : {}), ...(taskIds ? { taskIds } : {}) },
   });
   if (!result.estimate || !Number.isFinite(result.estimate.totalCredits)) throw new Error("The server did not return a valid credit estimate. No work was started.");
   return result.estimate;

@@ -19,7 +19,7 @@ it("renders persisted report/variants and requires explicit estimate approval be
   fireEvent.click(screen.getByRole("checkbox", { name: "Select for generation" }));
   fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" }));
   expect(await screen.findByRole("button", { name: "Approve & start generation" })).toBeEnabled();
-  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", ["v1"], expect.any(AbortSignal));
+  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", ["v1"], expect.any(AbortSignal), undefined);
   expect(api.mutateExperiment).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Approve & start generation" }));
   await waitFor(() => expect(api.mutateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", { variants: [{ id: "v1", revision: 2 }], idempotencyKey: expect.any(String) }));
@@ -75,7 +75,7 @@ it("shows a confirmed image rejection and estimates retry without starting anoth
   expect(screen.queryByText(/A provider outcome is unknown/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Estimate retry of known failures" }));
   expect(await screen.findByRole("button", { name: "Approve & start retry" })).toBeEnabled();
-  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", ["v1"], expect.any(AbortSignal));
+  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", ["v1"], expect.any(AbortSignal), undefined);
   expect(api.mutateExperiment).not.toHaveBeenCalled();
 });
 it("blocks paid actions for a paused experiment even without an error message", async () => {
@@ -100,6 +100,41 @@ it("counts only generated decks in image progress", async () => {
   experiment.variants.push({ ...base().variants[0], id: "v2", title: "Unused draft", status: "draft" });
   mount();
   expect(await screen.findByRole("listitem", { name: "Images: done, 3/3 ready" })).toBeInTheDocument();
+});
+it("retries a single failed job by task id after estimate approval", async () => {
+  experiment.status = "failed";
+  experiment.error = "provider_result_rejected";
+  experiment.variants[0].status = "failed";
+  experiment.variants[0].slides = [{ index: 0, status: "failed", url: null, error: "provider_result_rejected" }];
+  experiment.jobs = [{ id: "job1", kind: "slide", target: "v1", index: 0, status: "failed", attempts: 1 }];
+  api.estimateExperiment.mockResolvedValue({ analysisCredits: 0, planningCredits: 0, generationCredits: 2, totalCredits: 2, remainingCredits: 80 });
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Retry slide 1" }));
+  expect(await screen.findByRole("button", { name: "Approve & start retry" })).toBeEnabled();
+  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", undefined, expect.any(AbortSignal), ["job1"]);
+  expect(api.mutateExperiment).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Approve & start retry" }));
+  await waitFor(() => expect(api.mutateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "retry", { taskIds: ["job1"], idempotencyKey: expect.any(String) }));
+});
+it("offers per-job retry for exhausted unknown outcomes", async () => {
+  experiment.status = "paused";
+  experiment.error = "provider_outcome_unknown";
+  experiment.variants[0].status = "paused";
+  experiment.variants[0].slides = [{ index: 0, status: "unknown", url: null, error: "provider_outcome_unknown" }];
+  experiment.jobs = [{ id: "job2", kind: "slide", target: "v1", index: 0, status: "unknown", attempts: 4 }];
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Retry slide 1" }));
+  expect(await screen.findByRole("button", { name: "Approve & start retry" })).toBeEnabled();
+  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", undefined, expect.any(AbortSignal), ["job2"]);
+});
+it("hides per-job retry once the manual attempt limit is reached", async () => {
+  experiment.status = "paused";
+  experiment.variants[0].status = "paused";
+  experiment.variants[0].slides = [{ index: 0, status: "unknown", url: null, error: "provider_outcome_unknown" }];
+  experiment.jobs = [{ id: "job3", kind: "slide", target: "v1", index: 0, status: "unknown", attempts: 6 }];
+  mount();
+  await screen.findByText(/A provider outcome is unknown/);
+  expect(screen.queryByRole("button", { name: "Retry slide 1" })).not.toBeInTheDocument();
 });
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("checkbox", { name: "Select for generation" })); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
