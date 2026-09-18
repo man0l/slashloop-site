@@ -33,7 +33,7 @@ function ShowcaseCard({ v }) {
       target="_blank"
       rel="noreferrer"
       className="rounded-xl overflow-hidden transition-transform hover:-translate-y-1 snap-start shrink-0"
-      style={{ background: T.ink, textDecoration: "none", width: 220 }}
+      style={{ background: T.ink, textDecoration: "none", width: 220, marginRight: 12 }}
     >
       <div style={{ aspectRatio: "3/4", overflow: "hidden", background: "#0E1216" }}>
         <img src={v.thumb} alt={`${v.creator} — ${v.caption}`} loading="lazy" className="w-full h-full" style={{ objectFit: "cover", display: "block" }} />
@@ -82,7 +82,7 @@ function ShowcaseCarousel() {
   return (
     <div className="relative">
       <div ref={viewportRef} className="overflow-hidden pb-2">
-        <div className="flex gap-3" style={{ touchAction: "pan-y" }}>
+        <div className="flex" style={{ touchAction: "pan-y" }}>
         {items.map((v) => (
           <ShowcaseCard key={v.id} v={v} />
         ))}
