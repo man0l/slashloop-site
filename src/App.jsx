@@ -181,10 +181,13 @@ function Footer() {
               </span>
               <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev — /loop for marketing</span>
             </div>
-            <p className="mt-3" style={{ ...fM, fontSize: 13, color: "#AEB6BF", lineHeight: 1.6 }}>
-              Built by <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" style={{ color: "#fff", fontWeight: 600 }}>Manol T. (@manol_ai)</a> —
-              turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
-            </p>
+            <div className="mt-3 flex items-center gap-2.5">
+              <img src="/manol.jpg" alt="Manol T." width="36" height="36" loading="lazy" className="rounded-full" style={{ width: 36, height: 36, objectFit: "cover" }} />
+              <p style={{ ...fM, fontSize: 13, color: "#AEB6BF", lineHeight: 1.6 }}>
+                Built by <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" style={{ color: "#fff", fontWeight: 600 }}>Manol T. (@manol_ai)</a> —
+                turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
+              </p>
+            </div>
           </div>
           <div>
             <div style={colTitle}>PRODUCT</div>
