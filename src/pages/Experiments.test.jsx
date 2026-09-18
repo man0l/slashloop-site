@@ -95,6 +95,17 @@ it("does not mark downstream stages failed when a source fails", async () => {
   expect(screen.getByRole("listitem", { name: "Briefs: pending" })).toBeInTheDocument();
   expect(screen.getByRole("listitem", { name: "Images: pending, 0 ready" })).toBeInTheDocument();
 });
+it("traces a retrying briefs job on Briefs, not Images", async () => {
+  experiment = { ...base(), status: "planning", variants: [], report: { summary: "S", patterns: [] }, jobs: [
+    { id: "a", kind: "analysis", status: "done", attempts: 1 },
+    { id: "r", kind: "report", status: "done", attempts: 1 },
+    { id: "b", kind: "briefs", status: "pending", error: "provider_result_rejected", attempts: 3, nextAttemptAt: Date.now() + 10 * 60_000 },
+  ] };
+  mount();
+  expect(await screen.findByRole("listitem", { name: /Briefs: active, retry in 10m · attempt 3 · provider_result_rejected/ })).toBeInTheDocument();
+  expect(screen.getByRole("listitem", { name: "Images: pending, 0 ready" })).toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "Pipeline jobs" })).toHaveTextContent(/briefs · pending · attempt 3/);
+});
 it("counts only generated decks in image progress", async () => {
   experiment.variantCount = 2;
   experiment.variants[0].status = "done";

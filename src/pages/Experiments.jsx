@@ -32,6 +32,44 @@ function Stage({ label, note, state }) {
     <span>{label}<span className="sr-only"> · {state}</span>{note && <span className="block font-normal" style={{ color: T.muted }}>{note}</span>}</span>
   </li>;
 }
+function retryLabel(ts) {
+  if (!ts) return "";
+  const ms = Number(ts) - Date.now();
+  if (!Number.isFinite(ms)) return "";
+  if (ms <= 0) return "retrying now";
+  const m = Math.max(1, Math.round(ms / 60_000));
+  return m < 60 ? `retry in ${m}m` : `retry in ${Math.round(m / 60)}h`;
+}
+function causeText(error) {
+  if (!error) return "";
+  return String(error).replace(/^provider_result_rejected:?/, "") || String(error);
+}
+function jobsOf(experiment, kinds) {
+  return (experiment.jobs ?? []).filter((j) => kinds.includes(j.kind));
+}
+function jobsNote(jobs) {
+  if (!jobs.length) return "";
+  const retrying = jobs.filter((j) => j.status === "pending" && j.error);
+  const running = jobs.filter((j) => j.status === "running");
+  const failed = jobs.filter((j) => j.status === "failed" || j.status === "unknown");
+  const attempts = Math.max(0, ...jobs.map((j) => j.attempts || 0));
+  const parts = [];
+  if (running.length) parts.push("running");
+  if (retrying.length) {
+    const next = retrying.map((j) => j.nextAttemptAt).filter(Boolean).sort((a, b) => Number(a) - Number(b))[0];
+    parts.push(retryLabel(next) || "retrying");
+    if (attempts) parts.push(`attempt ${attempts}`);
+    const cause = causeText(retrying.find((j) => j.error)?.error);
+    if (cause) parts.push(cause);
+  } else if (failed.length) {
+    parts.push(causeText(failed[0].error) || failed[0].status);
+    if (attempts) parts.push(`attempt ${attempts}`);
+  }
+  return parts.join(" · ");
+}
+function joinNotes(...parts) {
+  return parts.filter(Boolean).join(" · ");
+}
 function Pipeline({ experiment, completedInputs }) {
   const total = experiment.inputs?.length ?? 0;
   const sourcesDone = total > 0 && completedInputs === total;
@@ -49,14 +87,31 @@ function Pipeline({ experiment, completedInputs }) {
   // Stale variant errors must not grey out a finished experiment.
   const imageUnknown = !completed && (experiment.status === "paused" || hasUnknownOutcome(experiment.error) || generated.some((v) => ["failed", "paused", "partial"].includes(v.status) && hasUnknownOutcome(v.error)));
   const imagesActive = experiment.status === "generating" || generated.some((v) => ["queued", "generating"].includes(v.status));
-  const retrying = experiment.jobs?.some((j) => j.status === "pending" && !!j.error);
+  const analysisJobs = jobsOf(experiment, ["analysis"]);
+  const reportJobs = jobsOf(experiment, ["report"]);
+  const briefsJobs = jobsOf(experiment, ["briefs"]);
+  const slideJobs = jobsOf(experiment, ["slide"]);
   const stages = [
-    { label: "Sources", note: total ? `${completedInputs}/${total}` : "", state: sourcesDone ? "done" : experiment.inputs?.some((i) => i.status === "failed" && !hasUnknownOutcome(i.error)) ? "failed" : planning ? "active" : "pending" },
-    { label: "Patterns", note: "", state: experiment.report ? "done" : planning && (sourcesDone || experiment.status === "synthesizing") ? "active" : failed && sourcesDone ? "failed" : "pending" },
-    { label: "Briefs", note: "", state: variants.length > 0 ? "done" : planning && experiment.report ? "active" : failed && experiment.report ? "failed" : "pending" },
-    { label: "Images", note: `${imageCount}${expectedImages ? `/${expectedImages}` : ""} ready${failedImages ? ` · ${failedImages} failed` : ""}${retrying && !completed ? " · retrying" : ""}`, state: completed ? "done" : imageUnknown ? "pending" : imagesActive ? "active" : imageFailure ? "failed" : expectedImages > 0 && imageCount === expectedImages ? "done" : "pending" },
+    { label: "Sources", note: joinNotes(total ? `${completedInputs}/${total}` : "", jobsNote(analysisJobs)), state: sourcesDone ? "done" : experiment.inputs?.some((i) => i.status === "failed" && !hasUnknownOutcome(i.error)) ? "failed" : planning ? "active" : "pending" },
+    { label: "Patterns", note: jobsNote(reportJobs), state: experiment.report ? "done" : planning && (sourcesDone || experiment.status === "synthesizing") ? "active" : failed && sourcesDone ? "failed" : "pending" },
+    { label: "Briefs", note: jobsNote(briefsJobs), state: variants.length > 0 ? "done" : planning && experiment.report ? "active" : failed && experiment.report ? "failed" : "pending" },
+    { label: "Images", note: joinNotes(`${imageCount}${expectedImages ? `/${expectedImages}` : ""} ready`, failedImages ? `${failedImages} failed` : "", jobsNote(slideJobs)), state: completed ? "done" : imageUnknown ? "pending" : imagesActive ? "active" : imageFailure ? "failed" : expectedImages > 0 && imageCount === expectedImages ? "done" : "pending" },
   ];
-  return <ol aria-label="Experiment stages" className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">{stages.map((s) => <Stage key={s.label} {...s} />)}</ol>;
+  const jobs = experiment.jobs ?? [];
+  return <div className="space-y-3">
+    <ol aria-label="Experiment stages" className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">{stages.map((s) => <Stage key={s.label} {...s} />)}</ol>
+    {jobs.length > 0 && <ol aria-label="Pipeline jobs" className="space-y-1 text-xs m-0 p-0 list-none" style={{ color: T.muted }}>
+      {jobs.map((j) => {
+        const label = j.kind === "slide" ? `slide ${(j.index ?? 0) + 1}` : j.kind;
+        const bits = [label, j.status];
+        if (j.attempts) bits.push(`attempt ${j.attempts}`);
+        if (j.error) bits.push(causeText(j.error) || j.error);
+        if (j.status === "pending" && j.nextAttemptAt) bits.push(retryLabel(j.nextAttemptAt));
+        if (j.status === "running" && j.startedAt) bits.push(`since ${timeAgo(j.startedAt)}`);
+        return <li key={j.id}>{bits.join(" · ")}</li>;
+      })}
+    </ol>}
+  </div>;
 }
 
 export default function Experiments() {
@@ -236,10 +291,11 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
       {active && <p role="status" className="text-sm" style={{ color: T.teal }}>Running in background · Cancel stops queued work only.</p>}
       {experiment.error && <p role="alert" style={{ color: "#9B2C23" }}>{errorText(experiment.error)}</p>}
     </section>
-    {(experiment.styleFormula || experiment.briefJudge || variants.some(v => v.slides?.some(s => s.prompt))) && <details className="rounded-xl p-5" style={panel}><summary className="cursor-pointer font-semibold text-sm">Pipeline data — grok drafts, Jev decisions, render prompts</summary><div className="mt-4 space-y-4 text-xs" style={{ color: T.muted }}>
+    {(experiment.styleFormula || experiment.briefJudge || experiment.jobs?.length || variants.some(v => v.slides?.some(s => s.prompt))) && <details className="rounded-xl p-5" style={panel} open={!experiment.briefJudge && !experiment.styleFormula}><summary className="cursor-pointer font-semibold text-sm">Pipeline data — grok drafts, Jev decisions, render prompts</summary><div className="mt-4 space-y-4 text-xs" style={{ color: T.muted }}>
       {experiment.styleFormula && <p className="m-0">Style formula (Jev): <strong style={{ color: T.ink }}>{experiment.styleFormula.medium}</strong> medium · <strong style={{ color: T.ink }}>{experiment.styleFormula.density}</strong> density</p>}
       {experiment.briefJudge && <div><p className="m-0 font-semibold" style={{ color: T.ink }}>Briefs fan-out — {experiment.briefJudge.candidates.length} candidates scored by Jev</p><ol className="mt-2 space-y-1 list-decimal list-inside m-0 p-0">{[...experiment.briefJudge.candidates].sort((a, b) => b.score - a.score).map((c, i) => <li key={i}><strong style={{ color: T.ink }}>{Number(c.score).toFixed(2)}</strong> · {c.title} — {c.hook}{experiment.briefJudge?.picked?.includes(c.title) ? <span style={{ color: T.teal }}> · ✓ picked</span> : null}</li>)}</ol></div>}
       {variants.flatMap(v => (v.slides ?? []).filter(s => s.prompt).map(s => <details key={`${v.id}-${s.index}`} className="mt-1"><summary className="cursor-pointer">Render prompt — {v.title} slide {(s.index ?? 0) + 1}{s.fanout ? ` · fan-out ${s.fanout.rendered}/${s.fanout.requested}, Jev picked #${(s.fanout.chosen ?? 0) + 1}` : ''}</summary><pre className="mt-2 whitespace-pre-wrap break-words p-3 rounded-lg" style={{ background: T.paper }}>{s.prompt}</pre>{Array.isArray(s.fanout?.judge) && s.fanout.judge.length > 0 && <pre className="whitespace-pre-wrap m-0" style={{ color: T.muted }}>Jev/grok trail: {JSON.stringify(s.fanout.judge)}</pre>}</details>))}
+      {!experiment.styleFormula && !experiment.briefJudge && !variants.some(v => v.slides?.some(s => s.prompt)) && <p className="m-0">No grok/Jev output yet. Briefs have not produced a valid variant set — job status is listed with the stages above.</p>}
     </div></details>}
     {(problem || query.isError) && <p role="alert" className="rounded-lg p-4 text-sm" style={{ background: "#FFF0E8", color: "#9B2C23" }}>{problem || query.error.message}</p>}
     {notice && <p role="status" className="text-sm" style={{ color: T.teal }}>{notice}</p>}
