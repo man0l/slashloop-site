@@ -170,7 +170,7 @@ export default function Gallery() {
           <Link to="/experiments" className="text-sm underline">View experiments</Link>
         </div>
       </div>
-      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} onClose={() => setShowExperimentCreate(false)} />}
+      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} originalSlideCounts={experimentVideoIds.map((id) => cards.find((c) => c.id === id)?.slideshowImages?.length).filter((n) => Number.isInteger(n) && n > 0)} onClose={() => setShowExperimentCreate(false)} />}
 
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">

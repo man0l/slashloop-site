@@ -8,6 +8,19 @@ vi.mock("../lib/experiments.js", async (original) => ({ ...await original(), cre
 let client;
 function mount(videoIds = ["original1"]) { client = new QueryClient(); render(<QueryClientProvider client={client}><MemoryRouter><ExperimentCreate accessToken="auth" workspaceId="w1" videoIds={videoIds} onClose={() => {}} /></MemoryRouter></QueryClientProvider>); }
 beforeEach(() => vi.clearAllMocks()); afterEach(() => { cleanup(); client?.clear(); });
+it("omits a CTA slide from original carousel length", async () => {
+  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({});
+  mount(["original1"]);
+  // 6 original slides → 5 story slides when a CTA is present.
+  cleanup();
+  client = new QueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentCreate accessToken="auth" workspaceId="w1" videoIds={["original1"]} originalSlideCounts={[6]} onClose={() => {}} /></MemoryRouter></QueryClientProvider>);
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Improve swipe rate" } });
+  expect(screen.getByText(/call-to-action slide is omitted/i)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("5");
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ slideCount: 5 })));
+});
 it("starts the experiment in one click: creates the draft and approves planning", async () => {
   createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
   fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Improve swipe rate" } });
@@ -36,7 +49,7 @@ it("fills an editable portrait example and sends only the visible instructions",
   fireEvent.change(screen.getByLabelText("Start from an example"), { target: { value: "portraits" } });
   expect(screen.getByLabelText("What do you want to change?")).toHaveValue("visualStyle");
   expect(screen.getByLabelText("Variants (baseline included)")).toHaveValue(2);
-  expect(screen.getByLabelText("Slides per variant")).toHaveValue(3);
+  expect(screen.getByText(/story slides/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "My edited portrait test" } });
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("My edited portrait test");
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("6 images");

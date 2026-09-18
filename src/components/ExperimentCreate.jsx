@@ -20,7 +20,13 @@ const EXAMPLES = {
   cta: { label: "Compare calls to action", goal: "Compare ways to invite a useful next step", direction: "Build one helpful slideshow from the reference patterns. Change only the final call to action between variants.", lockedConstraints: "Keep the story, character, hook and visual style unchanged\nNo unsupported promises", variables: ["cta"], customValues: "Invite a save versus invite a comment", variantCount: 2, slideCount: 3 },
 };
 
-export default function ExperimentCreate({ accessToken, workspaceId, videoIds, onClose }) {
+function previewStorySlides(counts) {
+  const usable = (counts ?? []).filter((n) => Number.isInteger(n) && n >= 1);
+  if (!usable.length) return null;
+  // 4+ slide decks usually end on a CTA; the server confirms from analysis.
+  return Math.min(...usable.map((n) => Math.min(8, Math.max(3, n >= 4 ? n - 1 : n))));
+}
+export default function ExperimentCreate({ accessToken, workspaceId, videoIds, originalSlideCounts, onClose }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY_FORM);
@@ -32,7 +38,8 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
   const keys = useRef(new Map());
   const set = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
   // Live estimate, recomputed on every keystroke. Server pricing stays the billing authority.
-  const est = estimateExperimentCredits(videoIds.length, Number(form.variantCount) || 0, Number(form.slideCount) || 0);
+  const storySlides = previewStorySlides(originalSlideCounts) ?? (Number(form.slideCount) || 5);
+  const est = estimateExperimentCredits(videoIds.length, Number(form.variantCount) || 0, storySlides);
   // Safety cap stays mandatory server-side; derived automatically instead of asked.
   const autoCap = Math.max(30, Math.ceil((est.total * 2) / 10) * 10);
   // Live validation: each field reports its own problem as you type.
@@ -40,14 +47,13 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
     goal: form.goal.trim() ? "" : "Goal is required — what should the experiment find out?",
     sources: videoIds.length >= 1 && videoIds.length <= 20 ? "" : `Select 1–20 originals in Gallery (currently ${videoIds.length}).`,
     variantCount: Number.isInteger(Number(form.variantCount)) && Number(form.variantCount) >= 1 && Number(form.variantCount) <= 12 ? "" : "Choose 1–12 variants.",
-    slideCount: Number.isInteger(Number(form.slideCount)) && Number(form.slideCount) >= 3 && Number(form.slideCount) <= 8 ? "" : "Choose 3–8 slides per variant.",
   };
-  const firstProblem = errors.goal || errors.sources || errors.variantCount || errors.slideCount || "";
+  const firstProblem = errors.goal || errors.sources || errors.variantCount || "";
   async function submit(event) {
     event.preventDefault();
     if (inFlight.current) return;
-    const { goal, brand, audience, language, direction, lockedConstraints, mode, variables, customValues, variantCount, slideCount } = form;
-    const input = { workspaceId, videoIds, variantCount: Number(variantCount), slideCount: Number(slideCount), maxCredits: autoCap, instructions: { goal, brand, audience, language, direction: [direction, customValues && `Desired variable values: ${customValues}`].filter(Boolean).join("\n"), lockedConstraints: lockedConstraints.split("\n").map((s) => s.trim()).filter(Boolean), mode, variables } };
+    const { goal, brand, audience, language, direction, lockedConstraints, mode, variables, customValues, variantCount } = form;
+    const input = { workspaceId, videoIds, variantCount: Number(variantCount), slideCount: storySlides, maxCredits: autoCap, instructions: { goal, brand, audience, language, direction: [direction, customValues && `Desired variable values: ${customValues}`].filter(Boolean).join("\n"), lockedConstraints: lockedConstraints.split("\n").map((s) => s.trim()).filter(Boolean), mode, variables } };
     const error = validateExperiment(input);
     if (error) { setProblem(error); return; }
     const fingerprint = JSON.stringify(input);
@@ -87,16 +93,15 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
       <ExperimentField label="Test mode"><select value={form.mode} onChange={(e) => setForm((prev) => ({ ...prev, mode: e.target.value, variables: e.target.value === "controlled" ? [prev.variables.find((v) => !["concept", "slides"].includes(v)) || "hook"] : prev.variables }))} style={experimentInputStyle}><option value="controlled">One-variable comparison</option><option value="exploration">Explore combinations</option></select></ExperimentField>
       {form.mode === "controlled" ? <ExperimentField label="What do you want to change?"><select value={form.variables[0]} onChange={(e) => set("variables", [e.target.value])} style={experimentInputStyle}>{Object.entries(VARIABLES).filter(([key]) => !["concept", "slides"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></ExperimentField> : <fieldset><legend className="text-sm mb-2">Variables to test</legend><div className="flex flex-wrap gap-3">{Object.entries(VARIABLES).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.variables.includes(key)} onChange={() => set("variables", form.variables.includes(key) ? form.variables.filter((v) => v !== key) : [...form.variables, key])} />{label}</label>)}</div></fieldset>}
       <ExperimentField label="Desired variable values (optional)"><input value={form.customValues} onChange={(e) => set("customValues", e.target.value)} style={experimentInputStyle} placeholder="Hook: question vs bold claim; character: founder" /></ExperimentField>
-      <div className="grid sm:grid-cols-2 gap-4">{[["variantCount", "Variants (baseline included)", 1, 12, "variants"], ["slideCount", "Slides per variant", 3, 8, "slides"]].map(([key, label, min, max, unit]) => {
-        const num = Number(form[key]);
-        const bad = !Number.isInteger(num) || num < min || num > max;
-        return <ExperimentField key={key} label={label}><input type="number" required min={min} max={max} step="1" value={form[key]} aria-invalid={bad} onChange={(e) => set(key, e.target.value)} style={{ ...experimentInputStyle, borderColor: bad ? "#B3261E" : T.line }} />{bad && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ {min}–{max} {unit}</p>}</ExperimentField>;
-      })}</div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <ExperimentField label="Variants (baseline included)"><input type="number" required min={1} max={12} step="1" value={form.variantCount} aria-invalid={!!errors.variantCount} onChange={(e) => set("variantCount", e.target.value)} style={{ ...experimentInputStyle, borderColor: errors.variantCount ? "#B3261E" : T.line }} />{errors.variantCount && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ 1–12 variants</p>}</ExperimentField>
+        <div className="flex flex-col gap-1.5 text-sm" style={{ color: T.ink }}><span>Slides per variant</span><p className="m-0 rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}` }}><strong>{storySlides}</strong> story slides<span className="block text-xs font-normal mt-1" style={{ color: T.muted }}>From the originals. A call-to-action slide is omitted when the source has one.</span></p></div>
+      </div>
       <p className="text-xs" style={{ color: T.muted }}>Auto stop at <strong>{autoCap} credits</strong> if anything runs away. Image generation is approved separately after brief review.</p>
       <section aria-label="What this experiment will produce" className="rounded-lg p-4 space-y-4" style={{ background: T.paper, border: `1px solid ${T.line}` }}>
         <h3 className="font-semibold">Output preview</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[[videoIds.length, "originals", "▣"], [Number(form.variantCount) || "—", "decks", "▤"], [Number(form.slideCount) || "—", "slides / deck", "▥"], [Number(form.variantCount) * Number(form.slideCount) || "—", "images", "▧"]].map(([count, label, icon]) => <div key={label} className="rounded-lg p-3" style={{ background: T.card, border: `1px solid ${T.line}` }}><span aria-hidden="true" className="text-lg" style={{ color: T.teal }}>{icon}</span><p className="mt-1"><strong className="text-2xl" style={fD}>{count}</strong>{" "}<span className="text-xs" style={{ color: T.muted }}>{label}</span></p></div>)}
+          {[[videoIds.length, "originals", "▣"], [Number(form.variantCount) || "—", "decks", "▤"], [storySlides || "—", "slides / deck", "▥"], [Number(form.variantCount) * storySlides || "—", "images", "▧"]].map(([count, label, icon]) => <div key={label} className="rounded-lg p-3" style={{ background: T.card, border: `1px solid ${T.line}` }}><span aria-hidden="true" className="text-lg" style={{ color: T.teal }}>{icon}</span><p className="mt-1"><strong className="text-2xl" style={fD}>{count}</strong>{" "}<span className="text-xs" style={{ color: T.muted }}>{label}</span></p></div>)}
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>1 baseline{Number(form.variantCount) > 1 ? ` + ${Number(form.variantCount) - 1} alternative${Number(form.variantCount) === 2 ? "" : "s"}` : " only"}</span>
