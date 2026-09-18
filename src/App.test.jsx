@@ -50,8 +50,8 @@ describe("Nav — logout", () => {
     const button = await screen.findAllByRole("button", { name: "Sign out" });
     fireEvent.click(button[0]);
     expect(signOut).toHaveBeenCalledTimes(1);
-    // Home-only marker: the pricing page has no "OUTLIER SCORE" section.
-    expect(await screen.findByText("THE OUTLIER SCORE", {}, { timeout: 3000 })).toBeInTheDocument();
+    // Home-only marker: the pricing page has no "THE PROCESS" section.
+    expect(await screen.findByText("THE PROCESS", {}, { timeout: 3000 })).toBeInTheDocument();
   });
 });
 
@@ -82,7 +82,7 @@ describe("Nav — logout", () => {
     const button = await screen.findAllByRole("button", { name: "Sign out" });
     fireEvent.click(button[0]);
     expect(signOut).toHaveBeenCalledTimes(1);
-    // Home-only marker: the pricing page has no "OUTLIER SCORE" section.
-    expect(await screen.findByText("THE OUTLIER SCORE", {}, { timeout: 3000 })).toBeInTheDocument();
+    // Home-only marker: the pricing page has no "THE PROCESS" section.
+    expect(await screen.findByText("THE PROCESS", {}, { timeout: 3000 })).toBeInTheDocument();
   });
 });
