@@ -360,13 +360,33 @@ export default function Home() {
           </h2>
           <p className="mt-4" style={{ fontSize: 15, lineHeight: 1.65, color: "#3A424B" }}>
             Slashloop is an MCP server plus a Claude Code skill. Track, scan, brief and
-            schedule without opening a tab. Three copy-paste prompts and your agent is onboarded.
+            schedule without opening a tab. Three copy-paste prompts and your agent is onboarded. <a href="/agent-setup" style={{ color: T.signal, fontWeight: 600 }}>Agent setup</a>.
           </p>
-          <div className="mt-5">
-            <CTAButton to="/agent-setup" onClick={cta("agentic_onboard")}>Onboard your agent →</CTAButton>
-          </div>
         </div>
         <AgenticTerminal />
+      </section>
+
+      {/* FAQ */}
+      <section className="max-w-3xl mx-auto px-5 pb-16">
+        <SectionLabel>QUESTIONS</SectionLabel>
+        <h2 className="mt-3" style={{ fontWeight: 800, fontSize: "clamp(22px,3vw,30px)", letterSpacing: -0.8 }}>
+          Asked before you ask
+        </h2>
+        <div className="mt-5 flex flex-col gap-2.5">
+          {[
+            ["Will it post garbage to my accounts?", "No. Everything lands as a draft first. TikTok drafts wait in your inbox, and nothing on any platform goes public without your tap. The scheduler only publishes what you scheduled, when you scheduled it."],
+            ["I can't film. I have no time. Does this still work?", "Yes, that is exactly who slideshows are for. There is nothing to film: pick a viral outlier, generate the slide images with AI straight from the brief, and post the carousel. Researchers report a first publishable deck in about 20 minutes, camera never involved."],
+            ["What exactly is an outlier score?", "Views divided by that creator's own median. A 27x from a 4K account means the idea won on merit, not audience, which is why you can replicate it from zero. A 1.3x from 2M followers is just a Tuesday."],
+            ["Which platforms can I post to?", "TikTok, Instagram, YouTube Shorts, and Threads, from one calendar. Instagram needs a Business or Creator account linked to a Facebook Page. TikTok uploads start as private drafts until TikTok reviews the integration."],
+            ["What does it cost?", "Start free: 300 credits a month, no card. Paid plans add credits and workspaces; one-off credit packs never expire. Every scrape and analysis shows its cost before and after, so there are no surprise bills."],
+            ["How does the agent part work?", "Slashloop is an MCP server with a Claude Code skill. Your agent tracks niches, scans nightly, drafts briefs, and queues posts while you sleep. Three copy-paste prompts onboard it: see Agent setup."],
+          ].map(([q, a]) => (
+            <details key={q} className="rounded-xl px-5 py-4" style={{ background: T.card, border: "1px solid " + T.line }}>
+              <summary style={{ fontWeight: 700, fontSize: 15, cursor: "pointer" }}>{q}</summary>
+              <p className="mt-2" style={{ fontSize: 14, lineHeight: 1.65, color: "#3A424B" }}>{a}</p>
+            </details>
+          ))}
+        </div>
       </section>
 
       {/* Final CTA */}
