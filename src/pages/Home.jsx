@@ -6,7 +6,7 @@ import { track } from "../lib/analytics.js";
 const cta = (placement) => () => track("cta_click", { placement });
 
 const SHOWCASE_URL = `${((import.meta.env.VITE_MCP_URL ?? "").trim() || "https://mcp.slashloop.dev").replace(/\/$/, "")}/api/showcase`;
-// Live outlier shelf — pulled from the showcase endpoint (top outliers across
+// Live outlier shelf, pulled from the showcase endpoint (top outliers across
 // tracked workspaces). Only R2-persisted thumbs are ever served, so cards
 // can't rot when TikTok's signed URLs expire; anything expired is excluded
 // server-side and never reaches this carousel.
@@ -37,7 +37,7 @@ function ShowcaseCard({ v }) {
       style={{ background: T.ink, textDecoration: "none", width: 220, marginRight: 12 }}
     >
       <div style={{ aspectRatio: "3/4", overflow: "hidden", background: "#0E1216" }}>
-        <img src={v.thumb} alt={`${v.creator} — ${v.caption}`} loading="lazy" className="w-full h-full" style={{ objectFit: "cover", display: "block" }} />
+        <img src={v.thumb} alt={`${v.creator}, ${v.caption}`} loading="lazy" className="w-full h-full" style={{ objectFit: "cover", display: "block" }} />
       </div>
       <div className="px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
@@ -56,8 +56,31 @@ function ShowcaseCard({ v }) {
   );
 }
 
-function ShowcaseCarousel() {
-  const items = useShowcase();
+function LiveCounter() {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    let live = true;
+    fetch(SHOWCASE_URL)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !Array.isArray(d?.items) || !d.items.length) return;
+        const niches = new Set(d.items.map((v) => v.niche).filter(Boolean));
+        setText(`${d.items.length} live outliers across ${niches.size} niche${niches.size === 1 ? "" : "s"} researchers are tracking now`);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!text) return null;
+  return (
+    <p className="text-center" style={{ ...fM, fontSize: 12, fontWeight: 600, color: T.signal }}>
+      {text}
+    </p>
+  );
+}
+
+function ShowcaseCarousel() {  const items = useShowcase();
   const trackRef = useRef(null);
   const [page, setPage] = useState(0);
   const paused = useRef(false);
@@ -222,7 +245,7 @@ function AgenticTerminal() {
   return (
     <div ref={boxRef} className="rounded-xl overflow-hidden" style={{ background: "#0E1216", border: "1px solid rgba(255,255,255,0.1)" }}>
       <div className="px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", ...fM, fontSize: 11, color: "#7A828B" }}>
-        claude code — tracking outliers while you sleep
+        claude code, tracking outliers while you sleep
       </div>
       <div className="p-5" style={{ ...fM, fontSize: 13, lineHeight: 1.9 }}>
         <div style={{ color: "#E8EAE6" }}>
@@ -258,17 +281,17 @@ const STEPS = [  {
   {
     n: "02",
     title: "Hunt the outliers",
-    body: "Every video is scored against its creator's own baseline — 27x from a 4K account beats 1.3x from 2M followers, every time.",
+    body: "Every video is scored against its creator's own baseline. 27x from a 4K account beats 1.3x from 2M followers, every time.",
   },
   {
     n: "03",
-    title: "Spin 20 variants",
-    body: "Run experiments on what works: generate twenty variations of a proven hook, keep the winners, kill the rest.",
+    title: "Spin 12 variants",
+    body: "Run experiments on what works: generate up to twelve variations of a proven hook, keep the winners, kill the rest.",
   },
   {
     n: "04",
     title: "Schedule everywhere",
-    body: "Queue the winners to all your accounts at once — drafts land ready to post.",
+    body: "Queue the winners to all your accounts at once. Drafts land ready to post.",
   },
 ];
 
@@ -279,7 +302,7 @@ export default function Home() {
       <section className="max-w-5xl mx-auto px-5 pt-12 pb-10 text-center">
         <SectionLabel>LOOP FOR APP MARKETING</SectionLabel>
         <h1 className="mt-3 mx-auto" style={{ ...fD, fontWeight: 900, fontSize: "clamp(32px, 5vw, 54px)", lineHeight: 1.08, letterSpacing: -1.5, maxWidth: 800 }}>
-          Clone viral TikTok slideshows.
+          Remake viral TikTok slideshows.
           <br />
           Get paying customers for your <Rotator />.
         </h1>
@@ -287,19 +310,20 @@ export default function Home() {
           Find what's already viral, remake it for your product, post it everywhere.
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
-          <CTAButton big to="/pricing" onClick={cta("hero_pricing")}>See pricing →</CTAButton>
-          <GhostButton to="/login" onClick={cta("hero_signin")}>Sign in</GhostButton>
+          <CTAButton big to="/login" onClick={cta("hero_start")}>Start free →</CTAButton>
+          <GhostButton to="/pricing" onClick={cta("hero_pricing")}>See pricing</GhostButton>
         </div>
         <p className="mt-2.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
-          free tier · no card to start
+          free tier · no card to start · posts land as drafts, nothing goes public without you
         </p>
       </section>
 
       {/* Live outlier examples */}
       <section className="max-w-5xl mx-auto px-5 pb-14">
+        <LiveCounter />
         <ShowcaseCarousel />
         <p className="mt-3 text-center" style={{ ...fM, fontSize: 11, color: T.muted }}>
-          live outliers researchers are tracking now — scores vs each creator's own baseline
+          scores vs each creator's own baseline, refreshed as researchers track more
         </p>
       </section>
 
@@ -335,7 +359,7 @@ export default function Home() {
             Your coding agent hunts outliers <span style={{ color: T.signal }}>while you sleep</span>
           </h2>
           <p className="mt-4" style={{ fontSize: 15, lineHeight: 1.65, color: "#3A424B" }}>
-            Slashloop is an MCP server plus a Claude Code skill — track, scan, brief and
+            Slashloop is an MCP server plus a Claude Code skill. Track, scan, brief and
             schedule without opening a tab. Three copy-paste prompts and your agent is onboarded.
           </p>
           <div className="mt-5">
@@ -351,7 +375,7 @@ export default function Home() {
           Your next post is already viral. <span style={{ color: T.signal }}>Someone else made it.</span>
         </h2>
         <div className="mt-6 flex justify-center">
-          <CTAButton big to="/pricing" onClick={cta("final_cta")}>Get in the /loop →</CTAButton>
+          <CTAButton big to="/login" onClick={cta("final_cta")}>Start free →</CTAButton>
         </div>
       </section>
     </>

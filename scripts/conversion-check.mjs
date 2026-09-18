@@ -36,7 +36,7 @@ async function auditViewport(browser, width, height, tag) {
 
   // Hero promise + rotator words.
   const h1 = (await page.locator("h1").nth(0).innerText().catch(() => "")) ?? "";
-  check(`[${tag}] hero promise`, /Clone viral/i.test(h1) && /paying customers/i.test(h1), h1.slice(0, 60));
+  check(`[${tag}] hero promise`, /Remake viral/i.test(h1) && /paying customers/i.test(h1), h1.slice(0, 60));
   const rotator = await page.evaluate(() => {
     const el = document.querySelector(".rotator-inner");
     return el ? el.textContent : "";
@@ -44,17 +44,25 @@ async function auditViewport(browser, width, height, tag) {
   check(`[${tag}] rotator words`, /app/.test(rotator) && /saas/.test(rotator));
 
   // Hero CTAs above the fold with correct targets.
-  const pricing = page.getByRole("link", { name: /see pricing/i }).first();
-  const signin = page.getByRole("link", { name: /sign in/i }).first();
+  const start = page.getByRole("link", { name: /start free/i }).nth(0);
+  const pricing = page.getByRole("link", { name: /see pricing/i }).nth(0);
+  const signin = page.getByRole("link", { name: /sign in/i }).nth(0);
+  check(`[${tag}] hero start CTA visible`, await start.isVisible());
+  check(`[${tag}] hero start goes to login`, (await start.getAttribute("href")) === "/login");
   check(`[${tag}] hero pricing CTA visible`, await pricing.isVisible());
-  check(`[${tag}] hero signin CTA visible`, await signin.isVisible());
+  // Mobile keeps auth behind the hamburger menu; open it first.
+  if (tag === "mobile") {
+    await page.getByRole("button", { name: /open menu/i }).nth(0).click().catch(() => {});
+  }
+  const signinVisible = tag === "mobile" ? (await signin.count()) > 0 : await signin.isVisible();
+  check(`[${tag}] hero signin CTA visible`, signinVisible);
   check(`[${tag}] pricing href`, (await pricing.getAttribute("href")) === "/pricing");
   check(`[${tag}] signin href`, (await signin.getAttribute("href")) === "/login");
 
-  // Click-through lands on /pricing (consent-gated analytics must not break nav).
-  await pricing.click();
-  await page.waitForURL("**/pricing", { timeout: 15000 }).catch(() => {});
-  check(`[${tag}] pricing click lands`, page.url().endsWith("/pricing"), page.url());
+  // Click-through lands on /login (consent-gated analytics must not break nav).
+  await start.click();
+  await page.waitForURL("**/login", { timeout: 15000 }).catch(() => {});
+  check(`[${tag}] start click lands`, page.url().endsWith("/login"), page.url());
   await page.goto(BASE + "/", { waitUntil: "networkidle", timeout: 45000 });
 
   // Live carousel: cards with loaded thumbs, working next arrow, dots.
@@ -108,8 +116,9 @@ async function auditViewport(browser, width, height, tag) {
   check(`[${tag}] terminal starts on scroll`, typed);
 
   // Final CTA + footer legal links resolve.
-  const final = page.getByRole("link", { name: /get in the \/loop/i }).first();
+  const final = page.getByRole("link", { name: /start free/i }).nth(1);
   check(`[${tag}] final CTA visible`, await final.isVisible().catch(() => false));
+  check(`[${tag}] final CTA goes to login`, (await final.getAttribute("href").catch(() => "")) === "/login");
   for (const p of ["/privacy", "/terms", "/agent-setup", "/pricing"]) {
     const r = await page.request.get(BASE + p).catch(() => null);
     check(`[${tag}] ${p} resolves`, !!r && r.ok(), r ? `status=${r.status()}` : "no response");
