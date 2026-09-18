@@ -58,8 +58,9 @@ export async function fetchVideoPreview(accessToken, { workspaceId, videoId }) {
 }
 
 /**
- * POST /api/videos/:id/recreate { workspaceId } — queue an OpenRouter
- * gpt-image-2.5-sunburst restage of a photo carousel (2 credits).
+ * POST /api/videos/:id/recreate { workspaceId } — queue a slideshow restage
+ * (10 credits/slide; video mode pre-auths the 8-slide max and refunds the
+ * difference after planning).
  */
 export async function recreateSlideshow(accessToken, { workspaceId, videoId }) {
   return apiFetch(`/api/videos/${encodeURIComponent(videoId)}/recreate`, {

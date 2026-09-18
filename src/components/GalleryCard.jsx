@@ -388,7 +388,7 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
               type="button"
               onClick={startRecreate}
               disabled={recreating}
-              title="Costs 2 credits. Gemini picks the cuts, Muse Image recreates them without overlays."
+              title="Costs 10 credits per slide. Photo posts charge the exact slide count; videos pre-authorize the 8-slide max and refund the difference once planned."
               className="self-start inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-70"
               style={{ ...fB, fontSize: 12, background: "#fff", color: T.ink, border: `1px solid ${T.line}` }}
             >

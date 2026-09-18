@@ -41,6 +41,8 @@ const CREDIT_TABLE = [
   ["Refresh a source / discover search", "1.5 credits per video"],
   ["Analyze a video", "5 credits"],
   ["Extract hook / generate variations / create brief", "2 credits"],
+  ["Generate experiment slides", "10 credits per slide"],
+  ["Recreate a slideshow", "10 credits per slide"],
 ];
 
 function PlanCard({ plan, interval }) {

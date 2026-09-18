@@ -25,7 +25,7 @@ export function validateExperiment(input) {
 // Mirror of backend CREDIT_COSTS (slashloop src/lib/credits.ts) and SLIDE_FANOUT
 // (slashloop src/experiments/schema.ts) — used only for live UI estimates; the
 // server's pricing stays the billing authority.
-export const EXPERIMENT_CREDIT_COSTS = { analyzeVideo: 5, planningCall: 2, slide: 2 };
+export const EXPERIMENT_CREDIT_COSTS = { analyzeVideo: 5, planningCall: 2, slide: 10 };
 export const SLIDE_FANOUT = 3;
 export function estimateExperimentCredits(videoCount, variantCount, slideCount) {
   const start = videoCount * EXPERIMENT_CREDIT_COSTS.analyzeVideo + 2 * EXPERIMENT_CREDIT_COSTS.planningCall;
