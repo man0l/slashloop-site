@@ -1,71 +1,179 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
-import { Cmd, SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
+import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
 
-/* ── Hero terminal demo ──────────────────────────────── */
+const SHOWCASE_URL = `${(import.meta.env.VITE_MCP_URL ?? "").replace(/\/$/, "")}/api/showcase`;
+// Live outlier shelf — pulled from the showcase endpoint (top outliers across
+// tracked workspaces). Only R2-persisted thumbs are ever served, so cards
+// can't rot when TikTok's signed URLs expire; anything expired is excluded
+// server-side and never reaches this carousel.
+function useShowcase() {
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetch(SHOWCASE_URL)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (live && Array.isArray(d?.items)) setItems(d.items);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return items;
+}
 
-const CMD = "/track @buildinpublic #indiehackers tiktok,shorts";
-const RESULTS = [
-  { score: 27.4, hot: true, creator: "@solodev_sam", followers: 4200, views: 310000, hook: '"I built this in a weekend and it made $1,400 in week one"' },
-  { score: 11.2, hot: true, creator: "@ship.daily", followers: 9800, views: 190000, hook: '"POV: your side project just got its first paying user"' },
-  { score: 6.8, hot: false, creator: "@codewithnina", followers: 15100, views: 96000, hook: '"Nobody tells you this about launching on Product Hunt"' },
-  { score: 1.3, hot: false, creator: "@techguru", followers: 2100000, views: 1200000, hook: "big account, normal day — filtered out of your feed", dim: true },
+function ShowcaseCard({ v }) {
+  return (
+    <a
+      href={v.url}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-xl overflow-hidden transition-transform hover:-translate-y-1 snap-start shrink-0"
+      style={{ background: T.ink, textDecoration: "none", width: 220 }}
+    >
+      <div style={{ aspectRatio: "3/4", overflow: "hidden", background: "#0E1216" }}>
+        <img src={v.thumb} alt={`${v.creator} — ${v.caption}`} loading="lazy" className="w-full h-full" style={{ objectFit: "cover", display: "block" }} />
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate" style={{ ...fB, fontSize: 12, color: "#E8EAE6" }}>{v.creator}</span>
+          <span className="rounded px-1.5 py-0.5 shrink-0" style={{ ...fM, fontSize: 12, fontWeight: 700, background: T.signal, color: "#fff" }}>
+            {Math.round(v.score)}x
+          </span>
+        </div>
+        <div className="truncate" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>{v.caption}</div>
+        <div className="flex items-center justify-between gap-2" style={{ ...fM, fontSize: 10, color: "#5D656E" }}>
+          <span>{fmt(v.views)} views</span>
+          {v.niche ? <span className="truncate">#{String(v.niche).replace(/^[@#]/, "")}</span> : null}
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function ShowcaseCarousel() {
+  const items = useShowcase();
+  const trackRef = useRef(null);
+  if (!items) return null;
+  if (!items.length) return null;
+  const scrollBy = (dir) => {
+    const el = trackRef.current;
+    if (el) el.scrollBy({ left: dir * Math.min(480, el.clientWidth * 0.8), behavior: "smooth" });
+  };
+  return (
+    <div className="relative">
+      <div
+        ref={trackRef}
+        className="flex gap-3 overflow-x-auto pb-2"
+        style={{ scrollSnapType: "x mandatory", scrollbarWidth: "thin" }}
+      >
+        {items.map((v) => (
+          <ShowcaseCard key={`${v.creator}-${v.score}-${v.views}`} v={v} />
+        ))}
+      </div>
+      {items.length > 4 && (
+        <>
+          <button type="button" aria-label="Previous outliers" onClick={() => scrollBy(-1)}
+            className="absolute left-0 top-1/3 rounded-full w-9 h-9 hidden sm:flex items-center justify-center"
+            style={{ background: "rgba(20,24,29,0.75)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)" }}>‹</button>
+          <button type="button" aria-label="Next outliers" onClick={() => scrollBy(1)}
+            className="absolute right-0 top-1/3 rounded-full w-9 h-9 hidden sm:flex items-center justify-center"
+            style={{ background: "rgba(20,24,29,0.75)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)" }}>›</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Rotating word: app ↔ saas. Pure CSS, no JS timers. */
+function Rotator() {
+  return (
+    <span
+      className="inline-block overflow-hidden align-bottom"
+      style={{ height: "1.12em", verticalAlign: "bottom" }}
+      aria-label="app or saas"
+    >
+      <span className="rotator-inner" style={{ display: "inline-block", color: T.signal }}>
+        <span style={{ display: "block", height: "1.12em", lineHeight: 1.12 }}>app</span>
+        <span style={{ display: "block", height: "1.12em", lineHeight: 1.12 }}>saas</span>
+      </span>
+      <style>{`@keyframes rotatorSwap { 0%,42% { transform: translateY(0); } 50%,92% { transform: translateY(-1.12em); } 100% { transform: translateY(0); } } .rotator-inner { animation: rotatorSwap 4.5s ease-in-out infinite; }`}</style>
+    </span>
+  );
+}
+
+const TikTokIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-label="TikTok"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" /></svg>
+);
+
+const InstagramIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-label="Instagram"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5" /><circle cx="12" cy="12" r="4.2" /><circle cx="17.6" cy="6.4" r="1.4" fill="currentColor" stroke="none" /></svg>
+);
+
+const YouTubeIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-label="YouTube"><path d="M23 7.2s-.22-1.56-.9-2.25c-.86-.9-1.82-.9-2.26-.96C16.7 3.75 12 3.75 12 3.75s-4.7 0-7.84.24c-.44.05-1.4.06-2.26.96-.68.69-.9 2.25-.9 2.25S.75 9.03.75 10.87v1.71c0 1.84.25 3.68.25 3.68s.22 1.56.9 2.25c.86.9 1.99.87 2.5.96 1.8.18 7.6.24 7.6.24s4.71-.01 7.85-.25c.44-.05 1.4-.06 2.26-.96.68-.69.9-2.25.9-2.25s.25-1.84.25-3.68v-1.71c0-1.84-.25-3.67-.25-3.67zM9.75 14.85V8.65l6.27 3.1-6.27 3.1z" /></svg>
+);
+
+const ThreadsIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-label="Threads"><circle cx="12" cy="12" r="8.2" /><path d="M12 8.3a3.7 3.7 0 1 0 3.7 3.7c0-1.1-.9-1.9-1.9-1.9" /><path d="M18.9 10.8v7.4" strokeLinecap="round" /></svg>
+);
+
+const PLATFORMS = [
+  { label: "TikTok", Icon: TikTokIcon },
+  { label: "Instagram", Icon: InstagramIcon },
+  { label: "YouTube", Icon: YouTubeIcon },
+  { label: "Threads", Icon: ThreadsIcon },
 ];
 
-function HeroTerminal() {
+/* ── Agentic terminal: tracking outliers from the agent ── */
+
+const TRACK_CMD = "/track @competitor #niche";
+const TRACK_ROWS = [
+  { score: "27.4x", hot: true, text: "@solodev_sam · 4.2K followers · 310K views" },
+  { score: "11.2x", hot: true, text: "@ship.daily · 9.8K followers · 190K views" },
+  { score: "1.3x", hot: false, text: "@techguru · 2.1M followers · 1.2M views" },
+];
+
+function AgenticTerminal() {
   const [typed, setTyped] = useState(0);
   const [rows, setRows] = useState(0);
   useEffect(() => {
-    if (typed < CMD.length) {
-      const t = setTimeout(() => setTyped(typed + 1), 34);
+    if (typed < TRACK_CMD.length) {
+      const t = setTimeout(() => setTyped(typed + 1), 40);
       return () => clearTimeout(t);
     }
-    if (rows < RESULTS.length) {
-      const t = setTimeout(() => setRows(rows + 1), rows === 0 ? 550 : 380);
+    if (rows < TRACK_ROWS.length) {
+      const t = setTimeout(() => setRows(rows + 1), 420);
       return () => clearTimeout(t);
     }
   }, [typed, rows]);
 
   return (
-    <div className="rounded-xl overflow-hidden shadow-2xl" style={{ background: T.ink, border: "1px solid rgba(255,255,255,0.08)" }}>
-      <div className="flex items-center gap-1.5 px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
-          <span key={c} className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />
-        ))}
-        <span className="ml-3" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>slashloop — your niche, ranked by outlier score</span>
+    <div className="rounded-xl overflow-hidden" style={{ background: "#0E1216", border: "1px solid rgba(255,255,255,0.1)" }}>
+      <div className="px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", ...fM, fontSize: 11, color: "#7A828B" }}>
+        claude code — tracking outliers while you sleep
       </div>
-      <div className="p-4 sm:p-5">
-        <div style={{ ...fM, fontSize: 13, color: "#E8EAE6" }}>
-          <span style={{ color: T.signal }}>❯</span> {CMD.slice(0, typed)}
+      <div className="p-5" style={{ ...fM, fontSize: 13, lineHeight: 1.9 }}>
+        <div style={{ color: "#E8EAE6" }}>
+          <span style={{ color: T.signal }}>❯</span> {TRACK_CMD.slice(0, typed)}
           <span style={{ animation: "blink 1s step-end infinite", color: T.signal }}>▊</span>
         </div>
-        {typed >= CMD.length && (
-          <div className="mt-1" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>
-            scanning 2 sources · 3 platforms · ranking vs each creator's baseline…
-          </div>
-        )}
-        <div className="mt-3 grid gap-2">
-          {RESULTS.slice(0, rows).map((r, i) => (
-            <div key={i} className="rounded-md px-3 py-2.5 flex items-center gap-3"
-              style={{
-                animation: "rowIn .35s ease both",
-                background: r.dim ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)",
-                opacity: r.dim ? 0.45 : 1,
-              }}>
+        <div className="mt-2 grid gap-1.5">
+          {TRACK_ROWS.slice(0, rows).map((r, i) => (
+            <div key={i} className="flex items-center gap-2.5" style={{ animation: "rowIn .35s ease both", opacity: r.hot ? 1 : 0.5 }}>
               <span className="rounded px-1.5 py-0.5 shrink-0"
-                style={{ ...fM, fontSize: 12, fontWeight: 600, background: r.hot ? T.signal : "transparent", color: r.hot ? "#fff" : "#9AA3AC", border: r.hot ? "none" : "1px solid rgba(255,255,255,0.2)" }}>
-                {r.score}x
+                style={{ ...fM, fontSize: 11, fontWeight: 700, background: r.hot ? T.signal : "transparent", color: r.hot ? "#fff" : "#9AA3AC", border: r.hot ? "none" : "1px solid rgba(255,255,255,0.2)" }}>
+                {r.score}
               </span>
-              <div className="min-w-0">
-                <div className="truncate" style={{ ...fB, fontSize: 13, color: "#E8EAE6" }}>{r.hook}</div>
-                <div style={{ ...fM, fontSize: 10, color: "#7A828B" }}>{r.creator} · {fmt(r.followers)} followers · {fmt(r.views)} views</div>
-              </div>
+              <span className="truncate" style={{ fontSize: 12, color: "#B8BEC5" }}>{r.text}</span>
             </div>
           ))}
         </div>
-        {rows >= RESULTS.length && (
-          <div className="mt-3" style={{ ...fM, fontSize: 11, color: T.teal, animation: "rowIn .35s ease both" }}>
-            ✓ 3 proven hooks found. 0 hours of scrolling. <span style={{ color: "#7A828B" }}>run /brief to turn #1 into a 20-min film plan</span>
+        {rows >= TRACK_ROWS.length && (
+          <div className="mt-2" style={{ fontSize: 12, color: T.teal, animation: "rowIn .35s ease both" }}>
+            ✓ tracked. nightly refresh + morning briefs, zero scrolling.
           </div>
         )}
       </div>
@@ -73,243 +181,108 @@ function HeroTerminal() {
   );
 }
 
+const STEPS = [  {
+    n: "01",
+    title: "Track creators & hashtags",
+    body: "Point slashloop at the creators and hashtags in your niche. It refreshes on schedule while you build.",
+  },
+  {
+    n: "02",
+    title: "Hunt the outliers",
+    body: "Every video is scored against its creator's own baseline — 27x from a 4K account beats 1.3x from 2M followers, every time.",
+  },
+  {
+    n: "03",
+    title: "Spin 20 variants",
+    body: "Run experiments on what works: generate twenty variations of a proven hook, keep the winners, kill the rest.",
+  },
+  {
+    n: "04",
+    title: "Schedule everywhere",
+    body: "Queue the winners to all your accounts at once — drafts land ready to post.",
+  },
+];
+
 export default function Home() {
   return (
     <>
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-5 pt-10 pb-16 grid lg:grid-cols-2 gap-10 items-center">
-        <div>
-          <SectionLabel>/LOOP FOR MARKETING</SectionLabel>
-          <h1 className="mt-3" style={{ ...fD, fontWeight: 900, fontSize: "clamp(34px, 5vw, 52px)", lineHeight: 1.05, letterSpacing: -1.5 }}>
-            You shipped the app.
-            <br />
-            Now ship the <span style={{ color: T.signal }}>content</span> that sells it.
-          </h1>
-          <p className="mt-5" style={{ fontSize: 17, lineHeight: 1.6, color: "#3A424B", maxWidth: 480 }}>
-            slashloop watches TikTok, Reels & Shorts in your niche and flags the videos that
-            over-performed the creator's own baseline — then hands you the hook, the format,
-            and a brief you can film yourself or generate with AI. Proven concepts, not vibes.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <CTAButton big to="/pricing">See pricing →</CTAButton>
-            <GhostButton to="/login">Sign in</GhostButton>
-          </div>
-          <p className="mt-2.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
-            free tier available · no card to start · web app + CLI + MCP for Claude Code
-          </p>
+      <section className="max-w-5xl mx-auto px-5 pt-12 pb-10 text-center">
+        <SectionLabel>LOOP FOR APP MARKETING</SectionLabel>
+        <h1 className="mt-3 mx-auto" style={{ ...fD, fontWeight: 900, fontSize: "clamp(32px, 5vw, 54px)", lineHeight: 1.08, letterSpacing: -1.5, maxWidth: 800 }}>
+          Clone viral TikTok slideshows.
+          <br />
+          Get paying customers for your <Rotator />.
+        </h1>
+        <p className="mt-5 mx-auto" style={{ fontSize: 17, lineHeight: 1.6, color: "#3A424B", maxWidth: 560 }}>
+          Find what's already viral, remake it for your product, post it everywhere.
+        </p>
+        <div className="mt-7 flex flex-wrap justify-center gap-3">
+          <CTAButton big to="/pricing">See pricing →</CTAButton>
+          <GhostButton to="/login">Sign in</GhostButton>
         </div>
-        <HeroTerminal />
+        <p className="mt-2.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
+          free tier · no card to start
+        </p>
       </section>
 
-      {/* Pain strip */}
+      {/* Live outlier examples */}
+      <section className="max-w-5xl mx-auto px-5 pb-14">
+        <ShowcaseCarousel />
+        <p className="mt-3 text-center" style={{ ...fM, fontSize: 11, color: T.muted }}>
+          live outliers researchers are tracking now — scores vs each creator's own baseline
+        </p>
+      </section>
+
+      {/* Process */}
       <section style={{ background: T.ink }}>
         <div className="max-w-5xl mx-auto px-5 py-14">
-          <SectionLabel>THE INDIE HACKER TRAP</SectionLabel>
-          <h2 className="mt-3" style={{ ...fD, fontWeight: 800, fontSize: "clamp(24px,3.5vw,34px)", color: "#fff", letterSpacing: -0.8, maxWidth: 640 }}>
-            "Build in public," they said. So you opened your camera — or your AI video tool — and realized you had no idea what would actually work.
-          </h2>
-          <div className="mt-8 grid sm:grid-cols-3 gap-4">
-            {[
-              ["The scroll trap", "You 'research' TikTok for 2 hours, save 14 videos, and remember none of them on filming day."],
-              ["The views mirage", "You copy what mega-creators post. It works for them because 2M people already follow them — not because the concept is good."],
-              ["The blank page", "Your changelog is full. Your content calendar is a graveyard of 'post something today?' reminders."],
-            ].map(([t, d]) => (
-              <div key={t} className="rounded-lg p-5" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ ...fM, fontSize: 12, color: T.signal }}>{t}</div>
-                <p className="mt-2" style={{ fontSize: 14, lineHeight: 1.55, color: "#B8BEC5" }}>{d}</p>
+          <SectionLabel>THE PROCESS</SectionLabel>
+          <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {STEPS.map((s) => (
+              <div key={s.n} className="rounded-xl p-5" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ ...fM, fontSize: 12, fontWeight: 700, color: T.signal }}>{s.n}</div>
+                <div className="mt-1.5" style={{ ...fD, fontSize: 16, fontWeight: 800, color: "#fff" }}>{s.title}</div>
+                <p className="mt-2" style={{ fontSize: 13.5, lineHeight: 1.6, color: "#B8BEC5" }}>{s.body}</p>
               </div>
+            ))}
+          </div>
+          <div className="mt-8 flex items-start justify-center gap-6" aria-label="Post to TikTok, Instagram, YouTube and Threads">
+            {PLATFORMS.map(({ label, Icon }) => (
+              <span key={label} className="flex flex-col items-center gap-1.5" style={{ color: "#7A828B" }}>
+                <Icon />
+                <span style={{ ...fM, fontSize: 10 }}>{label}</span>
+              </span>
             ))}
           </div>
         </div>
       </section>
 
-      {/* The insight */}
-      <section className="max-w-5xl mx-auto px-5 py-16">
-        <SectionLabel>THE OUTLIER SCORE</SectionLabel>
-        <div className="mt-3 grid lg:grid-cols-2 gap-10 items-center">
-          <div>
-            <h2 style={{ ...fD, fontWeight: 800, fontSize: "clamp(24px,3.5vw,34px)", letterSpacing: -0.8 }}>
-              Views lie. <span style={{ color: T.signal }}>Multipliers don't.</span>
-            </h2>
-            <p className="mt-4" style={{ fontSize: 16, lineHeight: 1.65, color: "#3A424B" }}>
-              A 1.2M-view video from a 2M-follower account is a Tuesday. A 310K-view video from a
-              4K-follower account is a <b>proven concept</b> — the algorithm pushed it on merit,
-              not audience. slashloop scores every video against that creator's own baseline,
-              so breakout ideas from small accounts surface instead of drowning under big-account noise.
-            </p>
-            <p className="mt-4" style={{ fontSize: 16, lineHeight: 1.65, color: "#3A424B" }}>
-              Those are the concepts <i>you</i> can replicate with 0 followers — because they
-              didn't need followers to win.
-            </p>
-          </div>
-          <div className="rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-            {[
-              { label: "@techguru · 2.1M followers", views: 1200000, base: 900000, score: "1.3x", hot: false },
-              { label: "@solodev_sam · 4.2K followers", views: 310000, base: 11300, score: "27.4x", hot: true },
-            ].map((r) => (
-              <div key={r.label} className="py-4" style={{ borderBottom: `1px solid ${T.line}` }}>
-                <div className="flex items-center justify-between">
-                  <span style={{ ...fB, fontSize: 13, fontWeight: 600 }}>{r.label}</span>
-                  <span className="rounded px-2 py-0.5" style={{ ...fM, fontSize: 14, fontWeight: 600, background: r.hot ? T.signal : "transparent", color: r.hot ? "#fff" : T.muted, border: r.hot ? "none" : `1px solid ${T.line}` }}>
-                    {r.score}
-                  </span>
-                </div>
-                <div className="mt-2.5 flex items-center gap-2">
-                  <span style={{ ...fM, fontSize: 9, color: T.muted, width: 60 }}>baseline</span>
-                  <div className="h-1.5 rounded-full" style={{ width: `${(r.base / 1200000) * 100 * 0.7 + 2}%`, background: "#C9CCC5" }} />
-                  <span style={{ ...fM, fontSize: 9, color: T.muted }}>{fmt(r.base)}</span>
-                </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <span style={{ ...fM, fontSize: 9, color: r.hot ? T.signal : T.ink, width: 60 }}>this video</span>
-                  <div className="h-1.5 rounded-full" style={{ width: `${(r.views / 1200000) * 100 * 0.7 + 2}%`, background: r.hot ? T.signal : T.ink }} />
-                  <span style={{ ...fM, fontSize: 9 }}>{fmt(r.views)}</span>
-                </div>
-              </div>
-            ))}
-            <p className="mt-4" style={{ ...fM, fontSize: 11, color: T.muted }}>
-              same feed, sorted by outlier score → the 4.2K account wins
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="max-w-5xl mx-auto px-5 pb-16">
-        <SectionLabel>THREE COMMANDS TO A CONTENT PIPELINE</SectionLabel>
-        <div className="mt-5 grid md:grid-cols-3 gap-4">
-          {[
-            {
-              cmd: "track",
-              title: "Point it at your niche",
-              body: <>Competitor apps, hashtags, creators — across TikTok, Reels & Shorts. <Cmd>track</Cmd> once, it refreshes on schedule while you code.</>,
-            },
-            {
-              cmd: "loop",
-              title: "Read the ranked feed",
-              body: <>Every new video lands in one feed sorted by outlier score. AI breaks down the hook, angle, format and why it popped — from the transcript, not guesswork.</>,
-            },
-            {
-              cmd: "brief",
-              title: "Create it in 20 minutes",
-              body: <>Turn any outlier into a beat-by-beat brief with the hook adapted to <i>your</i> app. Film it on your phone — or feed the brief straight into Veo, Sora or HeyGen and let AI shoot it. Post, ship, repeat.</>,
-            },
-          ].map((s) => (
-            <div key={s.cmd} className="rounded-xl p-6" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-              <div style={{ ...fM, fontSize: 16, fontWeight: 600 }}>
-                <span style={{ color: T.signal }}>/</span>{s.cmd}
-              </div>
-              <div className="mt-2" style={{ ...fD, fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>{s.title}</div>
-              <p className="mt-2" style={{ fontSize: 14, lineHeight: 1.6, color: "#3A424B" }}>{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Agents & MCP */}
-      <section style={{ background: T.ink }}>
-        <div className="max-w-5xl mx-auto px-5 py-16 grid lg:grid-cols-2 gap-10 items-center">
-          <div>
-            <SectionLabel>EVERY COMMAND IS ALSO A TOOL</SectionLabel>
-            <h2 className="mt-3" style={{ ...fD, fontWeight: 800, fontSize: "clamp(24px,3.5vw,34px)", color: "#fff", letterSpacing: -0.8 }}>
-              Your agents can run the <span style={{ color: T.signal }}>/loop</span> while you sleep
-            </h2>
-            <p className="mt-4" style={{ fontSize: 15, lineHeight: 1.65, color: "#B8BEC5" }}>
-              slashloop isn't just a web app — it ships as an <b style={{ color: "#fff" }}>MCP server and a CLI</b>.
-              Plug it into Claude Code and every command becomes a tool your agent can call:
-              scan nightly, rank the outliers, draft the briefs, and drop them into your repo or Notion before you're awake.
-            </p>
-            <p className="mt-3" style={{ fontSize: 15, lineHeight: 1.65, color: "#B8BEC5" }}>
-              You review content the way you review code: open the morning briefs, approve, create. The research loop
-              runs itself — you just keep the taste.
-            </p>
-            <div className="mt-5">
-              <CTAButton to="/agent-setup">Onboard your AI agent →</CTAButton>
-            </div>
-            <p className="mt-2.5" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>
-              3 copy-paste prompts: install the MCP · connect via OAuth · deploy the site
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {["web app", "CLI", "MCP · Claude Code", "cron-able", "agent-ready"].map((b) => (
-                <span key={b} className="rounded-full px-3 py-1" style={{ ...fM, fontSize: 11, color: "#B8BEC5", border: "1px solid rgba(255,255,255,0.15)" }}>{b}</span>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-            <div className="px-4 py-2.5" style={{ background: "rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.08)", ...fM, fontSize: 11, color: "#7A828B" }}>
-              claude code — your repo
-            </div>
-            <div className="p-5" style={{ background: "#0E1216", ...fM, fontSize: 12.5, lineHeight: 1.9 }}>
-              <div style={{ color: "#E8EAE6" }}><span style={{ color: T.signal }}>$</span> claude mcp add slashloop</div>
-              <div style={{ color: "#7A828B" }}>✓ 6 tools registered: track, scan, feed, analyze, brief, vault</div>
-              <div className="mt-2" style={{ color: "#E8EAE6" }}><span style={{ color: T.signal }}>❯</span> "every night: scan my niche, brief the top 2 outliers"</div>
-              <div style={{ color: "#7A828B" }}>agent scheduled · nightly at 03:00</div>
-              <div className="mt-2" style={{ color: T.teal }}>morning: 2 briefs waiting in /content/briefs</div>
-              <div style={{ color: "#7A828B" }}>→ 27.4x founder-story format · → 11.2x first-paying-user POV</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Built for BIP */}
-      <section style={{ background: T.card, borderTop: `1px solid ${T.line}`, borderBottom: `1px solid ${T.line}` }}>
-        <div className="max-w-5xl mx-auto px-5 py-16">
-          <SectionLabel>MADE FOR BUILD-IN-PUBLIC</SectionLabel>
+      {/* Agentic first */}
+      <section className="max-w-5xl mx-auto px-5 py-14 grid lg:grid-cols-2 gap-10 items-center">
+        <div>
+          <SectionLabel>AGENTIC FIRST</SectionLabel>
           <h2 className="mt-3" style={{ ...fD, fontWeight: 800, fontSize: "clamp(24px,3.5vw,34px)", letterSpacing: -0.8 }}>
-            Your unfair advantage: you can ship content like you ship code
+            Your coding agent hunts outliers <span style={{ color: T.signal }}>while you sleep</span>
           </h2>
-          <div className="mt-8 grid sm:grid-cols-2 gap-x-10 gap-y-6">
-            {[
-              ["Launch-week hooks", "Pull the exact opening lines from outlier launch videos in your category and A/B them across your launch content."],
-              ["Competitor radar", "Every viral video about a competing app lands in your feed pre-analyzed — steal the format before their next sprint."],
-              ["Hook Vault", "A growing library of proven, spoken-on-camera hooks. Generate on-brand variations for your app in one command."],
-              ["Credit-metered, not surprise-billed", "Every scrape and analysis shows its cost before and after. See exactly what you're spending — no surprise bills eating your ramen budget."],
-            ].map(([t, d]) => (
-              <div key={t} className="flex gap-3">
-                <span className="mt-1 shrink-0" style={{ ...fM, fontSize: 14, color: T.signal }}>/</span>
-                <div>
-                  <div style={{ ...fB, fontSize: 15, fontWeight: 600 }}>{t}</div>
-                  <p className="mt-1" style={{ fontSize: 14, lineHeight: 1.6, color: "#3A424B" }}>{d}</p>
-                </div>
-              </div>
-            ))}
+          <p className="mt-4" style={{ fontSize: 15, lineHeight: 1.65, color: "#3A424B" }}>
+            Slashloop is an MCP server plus a Claude Code skill — track, scan, brief and
+            schedule without opening a tab. Three copy-paste prompts and your agent is onboarded.
+          </p>
+          <div className="mt-5">
+            <CTAButton to="/agent-setup">Onboard your agent →</CTAButton>
           </div>
         </div>
-      </section>
-
-      {/* Social proof */}
-      <section className="max-w-5xl mx-auto px-5 py-16">
-        <SectionLabel>FROM THE TIMELINE</SectionLabel>
-        <div className="mt-5 grid md:grid-cols-3 gap-4">
-          {[
-            ["day 3 with slashloop: found a 19x outlier in the notes-app niche, reshot it for my app in one take, best performing post i've ever made. not even close.", "@marta_ships · building a journaling app"],
-            ["it's basically 'git log' for your niche. my claude code agent runs /scan via MCP every night — i wake up to ranked outliers instead of doomscrolling FYP for 'research'.", "@devpavel · 2 apps, $3.1K MRR"],
-            ["the caption-isn't-the-hook rule alone fixed my videos. turns out my hooks were never actually spoken in the first second. now they are.", "@nocode_nia · building in public since '24"],
-          ].map(([q, a]) => (
-            <div key={a} className="rounded-xl p-5 flex flex-col" style={{ background: T.ink }}>
-              <p style={{ fontSize: 14, lineHeight: 1.6, color: "#E8EAE6" }}>{q}</p>
-              <div className="mt-4 pt-3" style={{ ...fM, fontSize: 11, color: "#7A828B", borderTop: "1px solid rgba(255,255,255,0.1)" }}>{a}</div>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3" style={{ ...fM, fontSize: 10, color: T.muted }}>* beta-tester feedback, handles anonymized</p>
+        <AgenticTerminal />
       </section>
 
       {/* Final CTA */}
-      <section style={{ background: T.ink }}>
-        <div className="max-w-5xl mx-auto px-5 py-20 text-center">
-          <div style={{ ...fM, fontSize: 13, color: "#7A828B" }}>
-            <span style={{ color: T.signal }}>❯</span> your next post is already viral. someone else made it.
-          </div>
-          <h2 className="mt-3" style={{ ...fD, fontWeight: 900, fontSize: "clamp(28px,4.5vw,44px)", color: "#fff", letterSpacing: -1 }}>
-            Get in the <span style={{ color: T.signal }}>/loop</span>
-          </h2>
-          <p className="mt-3 mx-auto" style={{ fontSize: 16, color: "#B8BEC5", maxWidth: 460, lineHeight: 1.6 }}>
-            Start free — 300 credits/mo, 2 sources, no card required. Upgrade whenever
-            you outgrow it.
-          </p>
-          <div className="mt-7 flex justify-center">
-            <CTAButton big to="/pricing">See pricing →</CTAButton>
-          </div>
+      <section className="max-w-5xl mx-auto px-5 py-16 text-center">
+        <h2 style={{ ...fD, fontWeight: 900, fontSize: "clamp(26px,4vw,38px)", letterSpacing: -1 }}>
+          Your next post is already viral. <span style={{ color: T.signal }}>Someone else made it.</span>
+        </h2>
+        <div className="mt-6 flex justify-center">
+          <CTAButton big to="/pricing">Get in the /loop →</CTAButton>
         </div>
       </section>
     </>
