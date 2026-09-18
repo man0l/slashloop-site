@@ -96,7 +96,6 @@ function Nav() {
             the hamburger below is the only way to reach them on mobile. */}
         <div className="hidden xl:flex items-center gap-4">
           <Link to="/pricing" style={{ ...fM, fontSize: 13, color: T.ink }}>Pricing</Link>
-          <Link to="/agent-setup" style={{ ...fM, fontSize: 13, color: T.ink }}>AI setup</Link>
           {loading ? (
             // Placeholder with the logged-out controls' footprint — without
             // it the nav CTAs pop in when auth resolves and shift the header.
@@ -141,7 +140,6 @@ function Nav() {
           style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
         >
           <Link to="/pricing" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>Pricing</Link>
-          <Link to="/agent-setup" onClick={() => setMenuOpen(false)} style={{ ...fM, fontSize: 14, color: T.ink }}>AI setup</Link>
           {loading ? null : user ? (
             <>
               {loggedInLinks}
@@ -170,23 +168,51 @@ function Nav() {
 }
 
 function Footer() {
+  const colTitle = { ...fM, fontSize: 11, letterSpacing: 2, color: "#5D656E" };
+  const footLink = { ...fM, fontSize: 13, color: "#AEB6BF", textDecoration: "none" };
   return (
     <section style={{ background: T.ink }}>
-      <footer className="max-w-5xl mx-auto px-5 py-6 flex flex-wrap items-center justify-between gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-        <div className="flex items-center gap-2">
-          <span className="w-5 h-5 rounded flex items-center justify-center" style={{ background: T.signal }}>
-            <span style={{ ...fM, fontSize: 12, fontWeight: 600, color: "#fff" }}>/</span>
-          </span>
-          <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev — /loop for marketing</span>
+      <footer className="max-w-5xl mx-auto px-5 pt-10 pb-6" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="grid gap-8 sm:grid-cols-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded flex items-center justify-center" style={{ background: T.signal }}>
+                <span style={{ ...fM, fontSize: 12, fontWeight: 600, color: "#fff" }}>/</span>
+              </span>
+              <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev — /loop for marketing</span>
+            </div>
+            <p className="mt-3" style={{ ...fM, fontSize: 13, color: "#AEB6BF", lineHeight: 1.6 }}>
+              Built by <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" style={{ color: "#fff", fontWeight: 600 }}>Manol T. (@manol_ai)</a> —
+              turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
+            </p>
+          </div>
+          <div>
+            <div style={colTitle}>PRODUCT</div>
+            <div className="mt-3 flex flex-col gap-2">
+              <Link to="/discover" style={footLink}>Discover</Link>
+              <Link to="/sources" style={footLink}>Sources</Link>
+              <Link to="/gallery" style={footLink}>Gallery</Link>
+              <Link to="/experiments" style={footLink}>Experiments</Link>
+              <Link to="/studio" style={footLink}>Studio</Link>
+              <Link to="/calendar" style={footLink}>Calendar</Link>
+              <Link to="/pricing" style={footLink}>Pricing</Link>
+            </div>
+          </div>
+          <div>
+            <div style={colTitle}>RESOURCES</div>
+            <div className="mt-3 flex flex-col gap-2">
+              <Link to="/agent-setup" style={footLink}>AI setup</Link>
+              <Link to="/privacy" style={footLink}>Privacy</Link>
+              <Link to="/terms" style={footLink}>Terms</Link>
+              <button type="button" onClick={openCookieSettings} style={{ ...footLink, background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", textAlign: "left" }}>
+                Cookie settings
+              </button>
+            </div>
+          </div>
         </div>
-        <span style={{ ...fM, fontSize: 11, color: "#5D656E" }}>© 2026 · made with Claude Code, naturally</span>
-        <span className="flex items-center gap-3" style={{ ...fM, fontSize: 11 }}>
-          <Link to="/privacy" style={{ color: "#7A828B" }}>Privacy</Link>
-          <Link to="/terms" style={{ color: "#7A828B" }}>Terms</Link>
-          <button type="button" onClick={openCookieSettings} style={{ color: "#7A828B", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}>
-            Cookie settings
-          </button>
-        </span>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 16 }}>
+          <span style={{ ...fM, fontSize: 11, color: "#5D656E" }}>© 2026 · made with Claude Code, naturally</span>
+        </div>
       </footer>
     </section>
   );
