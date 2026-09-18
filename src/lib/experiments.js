@@ -95,11 +95,17 @@ export async function deleteExperiment(accessToken, workspaceId, id) {
   requireScope(accessToken, workspaceId);
   return apiFetch(pathFor(id), { method: "DELETE", accessToken, body: { workspaceId } });
 }
+/** Plan + pack wallet. remainingCredits is the experiment cap leftover, not spendable cash. */
+export function walletCredits(estimate) {
+  if (Number.isFinite(estimate?.workspaceCredits)) return estimate.workspaceCredits;
+  if (Number.isFinite(estimate?.remainingCredits)) return estimate.remainingCredits;
+  return NaN;
+}
 export function estimateBlockReason(estimate, experiment) {
   if (!estimate || !Number.isFinite(estimate.totalCredits) || estimate.totalCredits < 0) return "A valid estimate is required.";
-  if (!Number.isFinite(estimate.remainingCredits)) return "Available credits could not be verified.";
-  if (estimate.totalCredits > estimate.remainingCredits) return "Not enough credits. Add credits before continuing.";
+  const wallet = walletCredits(estimate);
+  if (!Number.isFinite(wallet)) return "Available credits could not be verified.";
+  if (estimate.totalCredits > wallet) return "Not enough credits. Add credits before continuing.";
   if (!Number.isFinite(experiment.maxCredits)) return "This experiment has no verified credit ceiling.";
-  if (estimate.totalCredits + (experiment.creditsCharged ?? 0) > experiment.maxCredits) return "This estimate exceeds the experiment’s remaining credit ceiling.";
   return "";
 }

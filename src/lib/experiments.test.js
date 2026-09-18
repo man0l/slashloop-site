@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiFetch } from "./http.js";
-import { createExperiment, estimateBlockReason, estimateExperiment, experimentPollInterval, getExperiment, listExperiments, mutateExperiment, mutationKey, SOURCE_LIMIT, toggleSource, updateExperimentVariant, validateExperiment } from "./experiments.js";
+import { createExperiment, estimateBlockReason, estimateExperiment, experimentPollInterval, getExperiment, listExperiments, mutateExperiment, mutationKey, SOURCE_LIMIT, toggleSource, updateExperimentVariant, validateExperiment, walletCredits } from "./experiments.js";
 vi.mock("./http.js", () => ({ apiFetch: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
 const valid = () => ({ workspaceId: "w1", videoIds: ["v1"], variantCount: 3, slideCount: 5, maxCredits: 80, instructions: { goal: "Find a hook", mode: "controlled", variables: ["hook"] } });
@@ -44,4 +44,7 @@ it("fails closed for missing estimates and unavailable credit balances", async (
   apiFetch.mockResolvedValue({ estimate: {} }); await expect(estimateExperiment("auth", "w1", "e1", "plan")).rejects.toThrow("valid credit estimate");
   expect(estimateBlockReason({ totalCredits: 10 }, { maxCredits: 80 })).toMatch(/verified/);
   expect(estimateBlockReason({ totalCredits: 10, remainingCredits: 5 }, { maxCredits: 80 })).toMatch(/Not enough/);
+  expect(walletCredits({ workspaceCredits: 500, remainingCredits: 204 })).toBe(500);
+  expect(estimateBlockReason({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 500 }, { maxCredits: 210, creditsCharged: 6 })).toBe("");
+  expect(estimateBlockReason({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 204 }, { maxCredits: 210, creditsCharged: 6 })).toMatch(/Not enough/);
 });
