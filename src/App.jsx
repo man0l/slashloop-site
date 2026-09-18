@@ -64,10 +64,10 @@ function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // A route change (following a link, or the "next" redirect after sign-in)
-  // means the menu's job is done — leaving it open would cover the new page.
+  // means the menu's job is done - leaving it open would cover the new page.
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
-  // Land on the marketing home deterministically — a signed-out user left on
+  // Land on the marketing home deterministically - a signed-out user left on
   // an app page (e.g. /sources) would just bounce to /login from that page's
   // own guard.
   async function handleSignOut() {
@@ -91,13 +91,13 @@ function Nav() {
     <header className="max-w-5xl mx-auto px-5 py-5 relative">
       <div className="flex items-center justify-between">
         <Logo />
-        {/* Desktop: full inline nav. Hidden below sm — a signed-in user's
+        {/* Desktop: full inline nav. Hidden below sm - a signed-in user's
             Sources/Gallery links have nowhere else to live at that width, so
             the hamburger below is the only way to reach them on mobile. */}
         <div className="hidden xl:flex items-center gap-4">
           <Link to="/pricing" style={{ ...fM, fontSize: 13, color: T.ink }}>Pricing</Link>
           {loading ? (
-            // Placeholder with the logged-out controls' footprint — without
+            // Placeholder with the logged-out controls' footprint - without
             // it the nav CTAs pop in when auth resolves and shift the header.
             <span className="invisible flex items-center gap-4" aria-hidden="true">
               <GhostButton to="/login">Sign in</GhostButton>
@@ -179,7 +179,7 @@ function Footer() {
               <span className="w-5 h-5 rounded flex items-center justify-center" style={{ background: T.signal }}>
                 <span style={{ ...fM, fontSize: 12, fontWeight: 600, color: "#fff" }}>/</span>
               </span>
-              <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev — /loop for marketing</span>
+              <span style={{ ...fM, fontSize: 12, color: "#7A828B" }}>slashloop.dev - /loop for marketing</span>
             </div>
             <div className="mt-3 flex items-center gap-2.5">
               <img src="/manol.jpg" alt="Manol T." width="36" height="36" loading="lazy" className="rounded-full" style={{ width: 36, height: 36, objectFit: "cover" }} />
@@ -188,7 +188,7 @@ function Footer() {
                 <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" aria-label="Manol T. on X" style={{ display: "inline-flex", verticalAlign: "-2px", color: "#AEB6BF" }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z" /></svg>
                 </a>{" "}
-                — turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
+                - turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
               </p>
             </div>
           </div>
@@ -224,7 +224,7 @@ function Footer() {
   );
 }
 
-/** GDPR cookie banner — analytics (GA4) stays off until accept. Re-opens via
+/** GDPR cookie banner - analytics (GA4) stays off until accept. Re-opens via
  *  the footer "Cookie settings" link (OPEN_SETTINGS_EVENT). The cookieless
  *  indiestack counter is unaffected and always on. */
 function CookieBanner() {
