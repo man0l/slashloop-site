@@ -184,8 +184,11 @@ function Footer() {
             <div className="mt-3 flex items-center gap-2.5">
               <img src="/manol.jpg" alt="Manol T." width="36" height="36" loading="lazy" className="rounded-full" style={{ width: 36, height: 36, objectFit: "cover" }} />
               <p style={{ ...fM, fontSize: 13, color: "#AEB6BF", lineHeight: 1.6 }}>
-                Built by <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" style={{ color: "#fff", fontWeight: 600 }}>Manol T. (@manol_ai)</a> —
-                turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
+                Built by <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" style={{ color: "#fff", fontWeight: 600 }}>Manol T. (@manol_ai)</a>{" "}
+                <a href="https://x.com/manol_ai" target="_blank" rel="noreferrer" aria-label="Manol T. on X" style={{ display: "inline-flex", verticalAlign: "-2px", color: "#AEB6BF" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z" /></svg>
+                </a>{" "}
+                — turning TikTok trends into profitable apps. 20y dev, ex-funded founder cracking distribution with AI.
               </p>
             </div>
           </div>
