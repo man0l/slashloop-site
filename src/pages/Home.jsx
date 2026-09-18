@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
 
-const SHOWCASE_URL = `${(import.meta.env.VITE_MCP_URL ?? "").replace(/\/$/, "")}/api/showcase`;
+const SHOWCASE_URL = `${((import.meta.env.VITE_MCP_URL ?? "").trim() || "https://mcp.slashloop.dev").replace(/\/$/, "")}/api/showcase`;
 // Live outlier shelf — pulled from the showcase endpoint (top outliers across
 // tracked workspaces). Only R2-persisted thumbs are ever served, so cards
 // can't rot when TikTok's signed URLs expire; anything expired is excluded
