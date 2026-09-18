@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import useEmblaCarousel from "embla-carousel-react";
+import Autoplay from "embla-carousel-autoplay";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
 
@@ -55,34 +57,53 @@ function ShowcaseCard({ v }) {
 
 function ShowcaseCarousel() {
   const items = useShowcase();
-  const trackRef = useRef(null);
+  const autoplay = useRef(Autoplay({ delay: 2800, stopOnInteraction: true }));
+  const [viewportRef, embla] = useEmblaCarousel(
+    { loop: true, align: "start", dragFree: false },
+    [autoplay.current],
+  );
+  const [selected, setSelected] = useState(0);
+  const onSelect = useCallback(() => {
+    if (embla) setSelected(embla.selectedScrollSnap());
+  }, [embla]);
+  useEffect(() => {
+    if (!embla) return;
+    onSelect();
+    embla.on("select", onSelect);
+    embla.on("reInit", onSelect);
+    return () => {
+      embla.off("select", onSelect);
+      embla.off("reInit", onSelect);
+    };
+  }, [embla, onSelect]);
   if (!items) return null;
   if (!items.length) return null;
-  const scrollBy = (dir) => {
-    const el = trackRef.current;
-    if (el) el.scrollBy({ left: dir * Math.min(480, el.clientWidth * 0.8), behavior: "smooth" });
-  };
+  const pages = embla ? embla.scrollSnapList().length : 0;
   return (
     <div className="relative">
-      <div
-        ref={trackRef}
-        className="flex gap-3 overflow-x-auto pb-2"
-        style={{ scrollSnapType: "x mandatory", scrollbarWidth: "thin" }}
-      >
+      <div ref={viewportRef} className="overflow-hidden pb-2">
+        <div className="flex gap-3" style={{ touchAction: "pan-y" }}>
         {items.map((v) => (
-          <ShowcaseCard key={`${v.creator}-${v.score}-${v.views}`} v={v} />
+          <ShowcaseCard key={v.id} v={v} />
         ))}
+        </div>
       </div>
-      {items.length > 4 && (
-        <>
-          <button type="button" aria-label="Previous outliers" onClick={() => scrollBy(-1)}
-            className="absolute left-0 top-1/3 rounded-full w-9 h-9 hidden sm:flex items-center justify-center"
-            style={{ background: "rgba(20,24,29,0.75)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)" }}>‹</button>
-          <button type="button" aria-label="Next outliers" onClick={() => scrollBy(1)}
-            className="absolute right-0 top-1/3 rounded-full w-9 h-9 hidden sm:flex items-center justify-center"
-            style={{ background: "rgba(20,24,29,0.75)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)" }}>›</button>
-        </>
-      )}
+      <div className="mt-3 flex items-center justify-center gap-3">
+        <button type="button" aria-label="Previous outliers" onClick={() => embla && embla.scrollPrev()}
+          className="rounded-full w-9 h-9 flex items-center justify-center"
+          style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>‹</button>
+        <div className="flex items-center gap-1.5" aria-hidden="true">
+          {Array.from({ length: pages }).map((_, i) => (
+            <span key={i} className="rounded-full" style={{
+              width: i === selected ? 18 : 6, height: 6, transition: "width .25s ease",
+              background: i === selected ? T.signal : "#C9CCC5",
+            }} />
+          ))}
+        </div>
+        <button type="button" aria-label="Next outliers" onClick={() => embla && embla.scrollNext()}
+          className="rounded-full w-9 h-9 flex items-center justify-center"
+          style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>›</button>
+      </div>
     </div>
   );
 }
@@ -139,7 +160,25 @@ const TRACK_ROWS = [
 function AgenticTerminal() {
   const [typed, setTyped] = useState(0);
   const [rows, setRows] = useState(0);
+  const [started, setStarted] = useState(false);
+  const boxRef = useRef(null);
   useEffect(() => {
+    const el = boxRef.current;
+    if (!el || started) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setStarted(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.3 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [started]);
+  useEffect(() => {
+    if (!started) return;
     if (typed < TRACK_CMD.length) {
       const t = setTimeout(() => setTyped(typed + 1), 40);
       return () => clearTimeout(t);
@@ -148,10 +187,10 @@ function AgenticTerminal() {
       const t = setTimeout(() => setRows(rows + 1), 420);
       return () => clearTimeout(t);
     }
-  }, [typed, rows]);
+  }, [started, typed, rows]);
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "#0E1216", border: "1px solid rgba(255,255,255,0.1)" }}>
+    <div ref={boxRef} className="rounded-xl overflow-hidden" style={{ background: "#0E1216", border: "1px solid rgba(255,255,255,0.1)" }}>
       <div className="px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", ...fM, fontSize: 11, color: "#7A828B" }}>
         claude code — tracking outliers while you sleep
       </div>
