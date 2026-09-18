@@ -24,15 +24,15 @@ export function SectionLabel({ children }) {
 export function CTAButton({ big, to, href, onClick, disabled, children }) {
   const className = `inline-flex items-center justify-center rounded-md font-semibold transition-transform hover:-translate-y-0.5 ${big ? "px-6 py-3.5" : "px-4 py-2"} ${disabled ? "opacity-50 pointer-events-none" : ""}`;
   const style = { ...fB, fontSize: big ? 16 : 13, background: T.signal, color: "#fff", boxShadow: "0 6px 20px rgba(255,77,0,0.35)" };
-  if (to) return <Link to={to} className={className} style={style}>{children}</Link>;
-  if (href) return <a href={href} className={className} style={style}>{children}</a>;
+  if (to) return <Link to={to} onClick={onClick} className={className} style={style}>{children}</Link>;
+  if (href) return <a href={href} onClick={onClick} className={className} style={style}>{children}</a>;
   return <button onClick={onClick} disabled={disabled} className={className} style={style}>{children}</button>;
 }
 
 export function GhostButton({ to, onClick, children }) {
   const className = "inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold transition-colors";
   const style = { ...fB, fontSize: 13, background: "transparent", color: T.ink, border: `1.5px solid ${T.ink}` };
-  if (to) return <Link to={to} className={className} style={style}>{children}</Link>;
+  if (to) return <Link to={to} onClick={onClick} className={className} style={style}>{children}</Link>;
   return <button onClick={onClick} className={className} style={style}>{children}</button>;
 }
 

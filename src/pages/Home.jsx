@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import useEmblaCarousel from "embla-carousel-react";
-import Autoplay from "embla-carousel-autoplay";
+import { useEffect, useRef, useState } from "react";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
+import { track } from "../lib/analytics.js";
+
+const cta = (placement) => () => track("cta_click", { placement });
 
 const SHOWCASE_URL = `${((import.meta.env.VITE_MCP_URL ?? "").trim() || "https://mcp.slashloop.dev").replace(/\/$/, "")}/api/showcase`;
 // Live outlier shelf — pulled from the showcase endpoint (top outliers across
@@ -32,7 +33,7 @@ function ShowcaseCard({ v }) {
       href={v.url}
       target="_blank"
       rel="noreferrer"
-      className="rounded-xl overflow-hidden transition-transform hover:-translate-y-1 snap-start shrink-0"
+      className="rounded-xl overflow-hidden transition-transform hover:-translate-y-1 shrink-0"
       style={{ background: T.ink, textDecoration: "none", width: 220, marginRight: 12 }}
     >
       <div style={{ aspectRatio: "3/4", overflow: "hidden", background: "#0E1216" }}>
@@ -57,55 +58,79 @@ function ShowcaseCard({ v }) {
 
 function ShowcaseCarousel() {
   const items = useShowcase();
-  const autoplay = useRef(Autoplay({ delay: 2800, stopOnInteraction: true }));
-  const [viewportRef, embla] = useEmblaCarousel(
-    { loop: true, align: "start", dragFree: false },
-    [autoplay.current],
-  );
-  const [selected, setSelected] = useState(0);
-  const onSelect = useCallback(() => {
-    if (embla) setSelected(embla.selectedScrollSnap());
-  }, [embla]);
+  const trackRef = useRef(null);
+  const [page, setPage] = useState(0);
+  const paused = useRef(false);
+
+  // Auto-advance until the visitor interacts; pages computed from live layout.
   useEffect(() => {
-    if (!embla) return;
-    onSelect();
-    embla.on("select", onSelect);
-    embla.on("reInit", onSelect);
-    return () => {
-      embla.off("select", onSelect);
-      embla.off("reInit", onSelect);
+    if (!items?.length) return;
+    const id = setInterval(() => {
+      const el = trackRef.current;
+      if (!el || paused.current || document.hidden) return;
+      const max = el.scrollWidth - el.clientWidth - 4;
+      if (el.scrollLeft >= max) el.scrollTo({ left: 0, behavior: "smooth" });
+      else el.scrollBy({ left: Math.min(480, el.clientWidth * 0.8), behavior: "smooth" });
+    }, 3200);
+    return () => clearInterval(id);
+  }, [items]);
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const max = Math.max(1, el.scrollWidth - el.clientWidth);
+      setPage(Math.round((el.scrollLeft / max) * Math.max(0, pageCount(el) - 1)));
     };
-  }, [embla, onSelect]);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  });
+
   if (!items) return null;
   if (!items.length) return null;
-  const pages = embla ? embla.scrollSnapList().length : 0;
+  const scrollBy = (dir) => {
+    const el = trackRef.current;
+    if (!el) return;
+    paused.current = true;
+    el.scrollBy({ left: dir * Math.min(480, el.clientWidth * 0.8), behavior: "smooth" });
+  };
   return (
     <div className="relative">
-      <div ref={viewportRef} className="overflow-hidden pb-2">
-        <div className="flex" style={{ touchAction: "pan-y" }}>
+      <div
+        ref={trackRef}
+        className="flex overflow-x-auto pb-2"
+        style={{ scrollSnapType: "x mandatory", scrollbarWidth: "thin" }}
+        onPointerDown={() => {
+          paused.current = true;
+        }}
+      >
         {items.map((v) => (
           <ShowcaseCard key={v.id} v={v} />
         ))}
-        </div>
       </div>
       <div className="mt-3 flex items-center justify-center gap-3">
-        <button type="button" aria-label="Previous outliers" onClick={() => embla && embla.scrollPrev()}
+        <button type="button" aria-label="Previous outliers" onClick={() => scrollBy(-1)}
           className="rounded-full w-9 h-9 flex items-center justify-center"
           style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>‹</button>
         <div className="flex items-center gap-1.5" aria-hidden="true">
-          {Array.from({ length: pages }).map((_, i) => (
+          {Array.from({ length: pageCount(trackRef.current) }).map((_, i) => (
             <span key={i} className="rounded-full" style={{
-              width: i === selected ? 18 : 6, height: 6, transition: "width .25s ease",
-              background: i === selected ? T.signal : "#C9CCC5",
+              width: i === page ? 18 : 6, height: 6, transition: "width .25s ease",
+              background: i === page ? T.signal : "#C9CCC5",
             }} />
           ))}
         </div>
-        <button type="button" aria-label="Next outliers" onClick={() => embla && embla.scrollNext()}
+        <button type="button" aria-label="Next outliers" onClick={() => scrollBy(1)}
           className="rounded-full w-9 h-9 flex items-center justify-center"
           style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>›</button>
       </div>
     </div>
   );
+}
+
+function pageCount(el) {
+  if (!el || el.clientWidth <= 0) return 1;
+  return Math.max(1, Math.ceil(el.scrollWidth / el.clientWidth));
 }
 
 /* Rotating word: app ↔ saas. Pure CSS, no JS timers. */
@@ -165,6 +190,11 @@ function AgenticTerminal() {
   useEffect(() => {
     const el = boxRef.current;
     if (!el || started) return;
+    // No IntersectionObserver (old browsers, JSDOM tests): start right away.
+    if (typeof IntersectionObserver === "undefined") {
+      setStarted(true);
+      return;
+    }
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
@@ -257,8 +287,8 @@ export default function Home() {
           Find what's already viral, remake it for your product, post it everywhere.
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
-          <CTAButton big to="/pricing">See pricing →</CTAButton>
-          <GhostButton to="/login">Sign in</GhostButton>
+          <CTAButton big to="/pricing" onClick={cta("hero_pricing")}>See pricing →</CTAButton>
+          <GhostButton to="/login" onClick={cta("hero_signin")}>Sign in</GhostButton>
         </div>
         <p className="mt-2.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
           free tier · no card to start
@@ -309,7 +339,7 @@ export default function Home() {
             schedule without opening a tab. Three copy-paste prompts and your agent is onboarded.
           </p>
           <div className="mt-5">
-            <CTAButton to="/agent-setup">Onboard your agent →</CTAButton>
+            <CTAButton to="/agent-setup" onClick={cta("agentic_onboard")}>Onboard your agent →</CTAButton>
           </div>
         </div>
         <AgenticTerminal />
@@ -321,7 +351,7 @@ export default function Home() {
           Your next post is already viral. <span style={{ color: T.signal }}>Someone else made it.</span>
         </h2>
         <div className="mt-6 flex justify-center">
-          <CTAButton big to="/pricing">Get in the /loop →</CTAButton>
+          <CTAButton big to="/pricing" onClick={cta("final_cta")}>Get in the /loop →</CTAButton>
         </div>
       </section>
     </>
