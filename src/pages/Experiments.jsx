@@ -40,9 +40,25 @@ function retryLabel(ts) {
   const m = Math.max(1, Math.round(ms / 60_000));
   return m < 60 ? `retry in ${m}m` : `retry in ${Math.round(m / 60)}h`;
 }
+const CAUSE_LABEL = {
+  credits_exhausted: "OpenRouter credits exhausted",
+  rate_limited: "provider rate-limited",
+  quota: "provider quota exhausted",
+  auth: "provider auth failed",
+  timeout: "provider timed out",
+  provider_server: "provider server error",
+  brief_candidates_invalid: "model returned invalid briefs",
+  unapproved_variable: "a variant changed a locked field",
+  variant_count: "wrong number of briefs",
+  not_one_variable: "controlled mode requires exactly one changed variable",
+  invalid_schema: "model JSON did not match the schema",
+  locked_constraints: "slide count or locked constraints did not match",
+};
 function causeText(error) {
   if (!error) return "";
-  return String(error).replace(/^provider_result_rejected:?/, "") || String(error);
+  const raw = String(error).replace(/^provider_result_rejected:?/, "").replace(/^provider_outcome_unknown:?/, "") || String(error);
+  const key = raw.replace(/_\d+$/, "");
+  return CAUSE_LABEL[raw] || CAUSE_LABEL[key] || raw;
 }
 function jobsOf(experiment, kinds) {
   return (experiment.jobs ?? []).filter((j) => kinds.includes(j.kind));
@@ -289,7 +305,12 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
       <details><summary className="text-sm cursor-pointer">Your saved inputs & rules</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{Object.entries(experiment.instructions ?? {}).map(([key, value]) => <div key={key}><dt className="font-semibold">{({ goal: "Goal", brand: "Brand", audience: "Audience", language: "Language", direction: "Creative direction", lockedConstraints: "Keep unchanged", mode: "Test mode", variables: "What may change" })[key] || key}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{key === "mode" ? value === "controlled" ? "Change one thing at a time" : "Explore combinations" : key === "variables" ? value.map((v) => ({ visualStyle: "Visual style", cta: "Call to action" })[v] || v).join(", ") : Array.isArray(value) ? value.join("\n") : displayValue(value) || "Not specified"}</dd></div>)}</dl></details>
       <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}{!active && <ExperimentButton disabled={busy || deleting} onClick={() => setConfirmDelete(true)}>{deleting ? "Deleting…" : "Delete"}</ExperimentButton>}</div>
       {active && <p role="status" className="text-sm" style={{ color: T.teal }}>Running in background · Cancel stops queued work only.</p>}
-      {experiment.error && <p role="alert" style={{ color: "#9B2C23" }}>{errorText(experiment.error)}</p>}
+      {(() => {
+        const failing = (experiment.jobs ?? []).find((j) => j.error && ["pending", "running", "failed", "unknown"].includes(j.status));
+        if (!failing?.error) return experiment.error ? <p role="alert" style={{ color: "#9B2C23" }}>{errorText(experiment.error)}</p> : null;
+        const when = failing.status === "running" ? "running now" : failing.status === "pending" && failing.nextAttemptAt ? retryLabel(failing.nextAttemptAt) : failing.status;
+        return <p role="alert" className="rounded-lg p-3 text-sm" style={{ background: "#FFF0E8", color: "#9B2C23" }}>{failing.kind} attempt {failing.attempts ?? "?"}: {causeText(failing.error)}{when ? ` · ${when}` : ""}</p>;
+      })()}
     </section>
     {(experiment.styleFormula || experiment.briefJudge || experiment.jobs?.length || variants.some(v => v.slides?.some(s => s.prompt))) && <details className="rounded-xl p-5" style={panel} open={!experiment.briefJudge && !experiment.styleFormula}><summary className="cursor-pointer font-semibold text-sm">Pipeline data — grok drafts, Jev decisions, render prompts</summary><div className="mt-4 space-y-4 text-xs" style={{ color: T.muted }}>
       {experiment.styleFormula && <p className="m-0">Style formula (Jev): <strong style={{ color: T.ink }}>{experiment.styleFormula.medium}</strong> medium · <strong style={{ color: T.ink }}>{experiment.styleFormula.density}</strong> density</p>}
@@ -301,7 +322,7 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
     {notice && <p role="status" className="text-sm" style={{ color: T.teal }}>{notice}</p>}
     {allDone && <div role="status" className="rounded-lg p-4 flex flex-wrap items-center gap-3" style={{ background: "#E9F7F1", border: `1px solid ${T.teal}` }}><span aria-hidden="true" className="inline-flex items-center justify-center w-6 h-6 rounded-full text-sm font-bold" style={{ background: T.teal, color: "white" }}>✓</span><p className="text-sm font-semibold m-0" style={{ color: T.teal }}>Experiment complete — every image is ready. Download, schedule, or compare variants below.</p></div>}
     {unknown && !active && <p role="alert" className="rounded-lg p-4 text-sm" style={panel}>A provider outcome is unknown. Paid actions paused to avoid duplicate charges. Retry individual failed jobs below.</p>}
-    {unknown && active && <p role="status" className="text-sm" style={{ color: T.teal }}>A provider outcome is unknown. Retrying automatically (up to 3× with backoff) before this needs manual review.</p>}
+    {unknown && active && <p role="status" className="text-sm" style={{ color: T.teal }}>A provider outcome is unknown. Retrying automatically (up to 3×, 1 minute apart) before this needs manual review.</p>}
     {uncertain && !unknown && <div className="rounded-lg p-4 text-sm space-y-3" style={panel}><p>Response lost. Recheck the same request safely.</p><ExperimentButton disabled={busy} onClick={() => dispatch(uncertain)}>Recheck original request</ExperimentButton></div>}
     {approval && <section ref={approvalRef} aria-label="Approve credit estimate" className="rounded-xl p-5 space-y-4" style={{ ...panel, borderColor: T.teal }}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Review credit estimate</h2><dl className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">{[["Analysis", approval.estimate.analysisCredits], ["Planning", approval.estimate.planningCredits], ["Generation", approval.estimate.generationCredits], ["Total", approval.estimate.totalCredits], ["Available", approval.estimate.remainingCredits]].map(([label, value]) => <div key={label}><dt style={{ color: T.muted }}>{label}</dt><dd className="font-semibold text-lg">{value ?? "—"}</dd></div>)}</dl><div className="flex flex-wrap gap-2"><Chip>Paid {approval.stage === "plan" ? "analysis & planning" : "generation"}</Chip><Chip>{experiment.maxCredits}-credit cap</Chip></div>{(!approvalCurrent || blockReason) && <p role="alert" className="text-sm" style={{ color: "#9B2C23" }}>{!approvalCurrent ? "The experiment changed. Request a fresh estimate." : blockReason}</p>}<div className="flex flex-wrap gap-2"><ExperimentButton primary disabled={busy || active || anyDirty || (unknown && !approval.payload.taskIds?.length) || !approvalCurrent || !!blockReason} onClick={() => dispatch(approval)}>Approve & start {approval.action === "retry" ? "retry" : approval.stage === "plan" ? "planning" : "generation"}</ExperimentButton><ExperimentButton disabled={busy} onClick={() => setApproval(null)}>Dismiss estimate</ExperimentButton></div></section>}
     {variants.length > 0 && <section className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 style={{ ...fD, fontWeight: 800, fontSize: 24 }}>{hasOutputs ? "Generated results" : "Review variant briefs"}</h2><p className="text-sm mt-1" style={{ color: T.muted }}>{anyDirty ? "Unsaved changes — save or discard first." : hasOutputs ? "Review images before use." : `${selectedVariants.length} selected`}</p></div>{!(allDone && !selectedVariants.length) && <ExperimentButton primary disabled={busy || active || unknown || !!uncertain || anyDirty || !selectedVariants.length} onClick={() => prepare("generate", "generate", { variants: selectedVariants.map((v) => ({ id: v.id, revision: v.revision })) })}>Estimate selected generation</ExperimentButton>}</div>{variants.map((v, i) => <ExperimentVariant key={`${v.id}:${v.revision}`} variant={v} baseline={variants.find((b) => b.id === v.baselineId)} expectedSlideCount={experiment.slideCount} index={i} selected={selected.includes(v.id)} selectable={canSelect(v) && !active && !unknown && !uncertain} busy={busy} onSelect={() => { setSelected((ids) => ids.includes(v.id) ? ids.filter((id) => id !== v.id) : [...ids, v.id]); setApproval(null); }} onSave={saveVariant} onDirty={onDirty} onDownload={download} onSchedule={(variant, images) => setSchedule({ variant, images })} retryJobFor={(variantId, index) => retryableJob("slide", variantId, index)} onRetrySlide={retryJob} />)}</section>}

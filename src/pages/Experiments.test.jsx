@@ -105,6 +105,14 @@ it("traces a retrying briefs job on Briefs, not Images", async () => {
   expect(await screen.findByRole("listitem", { name: /Briefs: active, retry in 10m · attempt 3 · provider_result_rejected/ })).toBeInTheDocument();
   expect(screen.getByRole("listitem", { name: "Images: pending, 0 ready" })).toBeInTheDocument();
   expect(screen.getByRole("list", { name: "Pipeline jobs" })).toHaveTextContent(/briefs · pending · attempt 3/);
+  expect(screen.getByRole("alert")).toHaveTextContent(/briefs attempt 3: provider_result_rejected · retry in 10m/);
+});
+it("names OpenRouter credit exhaustion on a live job", async () => {
+  experiment = { ...base(), status: "planning", variants: [], report: { summary: "S", patterns: [] }, jobs: [
+    { id: "b", kind: "briefs", status: "pending", error: "provider_outcome_unknown:credits_exhausted_402", attempts: 2, nextAttemptAt: Date.now() + 60_000 },
+  ] };
+  mount();
+  expect(await screen.findByRole("alert")).toHaveTextContent(/briefs attempt 2: OpenRouter credits exhausted · retry in 1m/);
 });
 it("counts only generated decks in image progress", async () => {
   experiment.variantCount = 2;
