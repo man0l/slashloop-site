@@ -9,7 +9,7 @@ import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { ExperimentButton } from "../components/ExperimentCreate.jsx";
 import ExperimentVariant from "../components/ExperimentVariant.jsx";
 import { experimentKey, useExperimentDetail, useExperimentList } from "../lib/useExperiments.js";
-import { errorText, deleteExperiment, estimateBlockReason, estimateExperiment, hasUnknownOutcome, isExperimentActive, mutateExperiment, mutationKey, updateExperimentVariant } from "../lib/experiments.js";
+import { errorText, deleteExperiment, deleteExperiments, estimateBlockReason, estimateExperiment, hasUnknownOutcome, isExperimentActive, mutateExperiment, mutationKey, updateExperimentVariant } from "../lib/experiments.js";
 import { downloadSlideshowZip } from "../lib/slideshowZip.js";
 import { ScheduleDrawer } from "../calendar/ScheduleDrawer.jsx";
 import { createApiAdapter } from "../lib/social.js";
@@ -157,8 +157,8 @@ export function ExperimentList({ accessToken, workspaceId }) {
   const [bulkResult, setBulkResult] = useState(null);
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
-  if (!query.data.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
-  const experiments = query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId);
+  const experiments = (query.data?.pages ?? []).flatMap((p) => p.experiments ?? []).filter((e) => !e.workspaceId || e.workspaceId === workspaceId);
+  if (!experiments.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
   const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
   const goalOf = (e) => e.instructions?.goal || e.title || "Untitled experiment";
   const onDelete = async () => {
@@ -175,14 +175,14 @@ export function ExperimentList({ accessToken, workspaceId }) {
   async function onDeleteBulk() {
     if (!selectedIds.length || bulkBusy) return;
     setBulkBusy(true); setBulkResult(null);
-    let deleted = 0; const failed = [];
-    for (const id of selectedIds) {
-      try { await deleteExperiment(accessToken, workspaceId, id); deleted++; }
-      catch (err) { failed.push({ goal: goalOf(experiments.find((e) => e.id === id)) || id, reason: err.message || "delete failed" }); }
-    }
-    await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) });
-    setSelectedIds([]); setBulkConfirm(false); setBulkBusy(false);
-    if (failed.length) setBulkResult({ deleted, failed });
+    try {
+      const res = await deleteExperiments(accessToken, workspaceId, selectedIds);
+      await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) });
+      setSelectedIds([]); setBulkConfirm(false);
+      if (res.failed?.length) setBulkResult({ deleted: res.deleted ?? 0, failed: res.failed.map((f) => ({ goal: goalOf(experiments.find((e) => e.id === f.id)) || f.id, reason: f.message || f.code || "delete failed" })) });
+    } catch (err) {
+      setBulkResult({ deleted: 0, failed: [{ goal: "", reason: err.message || "Delete failed." }] });
+    } finally { setBulkBusy(false); }
   }
   const selectBox = (e) => <input type="checkbox" aria-label={`Select ${goalOf(e)}`} checked={selectedIds.includes(e.id)} onChange={() => toggleSelect(e.id)} className="w-4 h-4 cursor-pointer" />;
   return <div>
@@ -196,7 +196,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
         {selectedIds.length > 0 && <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(true)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: "#FFF0E8", color: "#9B2C23", border: `1px solid #9B2C23` }}>Delete selected…</button>}
       </div>
     </div>
-    {bulkResult && <p role="alert" className="rounded-lg p-3 text-sm mb-3" style={{ background: "#FFF0E8", color: "#9B2C23" }}>Deleted {bulkResult.deleted} of {bulkResult.deleted + bulkResult.failed.length}. {bulkResult.failed.length} failed — {bulkResult.failed[0]?.reason} (running experiments are kept).</p>}
+    {bulkResult && <p role="alert" className="rounded-lg p-3 text-sm mb-3" style={{ background: "#FFF0E8", color: "#9B2C23" }}>Deleted {bulkResult.deleted} of {bulkResult.deleted + bulkResult.failed.length}. {bulkResult.failed.length} failed — {bulkResult.failed[0]?.goal ? `${bulkResult.failed[0].goal}: ` : ""}{bulkResult.failed[0]?.reason} (running experiments are kept).</p>}
     {view === "grid" ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{experiments.map((e) => {
       const thumbs = thumbsOf(e);
       return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow relative" style={panel}>
@@ -224,6 +224,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
         </li>;
       })}
     </ul>}
+    {query.hasNextPage && <div className="mt-4 text-center"><ExperimentButton disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? "Loading…" : `Load more${experiments.length ? ` (${experiments.length} shown)` : ""}`}</ExperimentButton></div>}
     <ConfirmDialog open={!!pendingDelete} danger busy={deleting !== ""} title="Delete experiment?" message={pendingDelete ? `Delete “${pendingDelete.instructions?.goal || "this experiment"}”? Its generated images are removed too. This cannot be undone.` : ""} confirmLabel="Delete" onConfirm={onDelete} onCancel={() => setPendingDelete(null)} />
     <ConfirmDialog open={bulkConfirm} danger busy={bulkBusy} title={`Delete ${selectedIds.length} experiments?`} message={`Delete ${selectedIds.length} selected experiments and their generated images? This cannot be undone.${selectedActive ? ` ${selectedActive} ${selectedActive === 1 ? "is" : "are"} still running — the server keeps running experiments.` : ""}`} confirmLabel={`Delete ${selectedIds.length}`} onConfirm={onDeleteBulk} onCancel={() => setBulkConfirm(false)} />
   </div>;

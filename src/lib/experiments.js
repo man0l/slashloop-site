@@ -54,10 +54,10 @@ function requireScope(accessToken, workspaceId) {
   if (!workspaceId) throw new Error("Choose a workspace.");
 }
 const pathFor = (id) => `/api/experiments/${encodeURIComponent(id)}`;
-export async function listExperiments(accessToken, workspaceId, signal) {
+export async function listExperiments(accessToken, workspaceId, signal, { limit = 12, offset = 0 } = {}) {
   requireScope(accessToken, workspaceId);
-  const result = await apiFetch(`/api/experiments?${new URLSearchParams({ workspaceId })}`, { accessToken, signal });
-  return result.experiments ?? [];
+  const result = await apiFetch(`/api/experiments?${new URLSearchParams({ workspaceId, limit: String(limit), offset: String(offset) })}`, { accessToken, signal });
+  return { experiments: result.experiments ?? [], nextOffset: result.nextOffset ?? null };
 }
 export async function getExperiment(accessToken, workspaceId, id, signal) {
   requireScope(accessToken, workspaceId);
@@ -94,6 +94,12 @@ export function updateExperimentVariant(accessToken, workspaceId, id, variantId,
 export async function deleteExperiment(accessToken, workspaceId, id) {
   requireScope(accessToken, workspaceId);
   return apiFetch(pathFor(id), { method: "DELETE", accessToken, body: { workspaceId } });
+}
+/** One call for many ids; the endpoint is best-effort per id and reports failures. */
+export function deleteExperiments(accessToken, workspaceId, ids) {
+  requireScope(accessToken, workspaceId);
+  if (!Array.isArray(ids) || !ids.length) throw new Error("Select at least one experiment to delete.");
+  return apiFetch("/api/experiments", { method: "DELETE", accessToken, body: { workspaceId, ids } });
 }
 /** Plan + pack wallet. remainingCredits is the experiment cap leftover, not spendable cash. */
 export function walletCredits(estimate) {

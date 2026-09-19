@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ExperimentDetail, ExperimentList } from "./Experiments.jsx";
 import * as api from "../lib/experiments.js";
 import { useExperimentList } from "../lib/useExperiments.js";
-vi.mock("../lib/experiments.js", async (original) => ({ ...await original(), getExperiment: vi.fn(), estimateExperiment: vi.fn(), mutateExperiment: vi.fn(), updateExperimentVariant: vi.fn(), deleteExperiment: vi.fn() }));
+vi.mock("../lib/experiments.js", async (original) => ({ ...await original(), getExperiment: vi.fn(), estimateExperiment: vi.fn(), mutateExperiment: vi.fn(), updateExperimentVariant: vi.fn(), deleteExperiment: vi.fn(), deleteExperiments: vi.fn() }));
 vi.mock("../lib/useExperiments.js", async (original) => ({ ...await original(), useExperimentList: vi.fn() }));
 const base = () => ({ id: "e1", workspaceId: "w1", status: "review", updatedAt: "2026-09-16", instructions: { goal: "Test a better hook", mode: "controlled" }, maxCredits: 100, creditsCharged: 4, variantCount: 1, slideCount: 3, inputs: [{ videoId: "video1", status: "ready" }], report: { summary: "Strong opening contrast", patterns: [{ id: "p1", name: "Contrast", description: "Show before and after", sourceIds: ["video1"], evidence: [{ videoId: "video1", location: "opening", observation: "Immediate contrast" }] }] }, variants: [{ id: "v1", title: "Question hook", revision: 2, status: "ready", hypothesis: "A question invites a swipe", brief: { concept: "Morning routine", hook: "Need more time?", slides: [{ role: "hook", scene: "Desk", overlayText: "Before" }] }, slides: [] }] });
 let experiment;
@@ -177,7 +177,7 @@ it("declares completion clearly and suppresses stale unknown warnings", async ()
   expect(screen.queryByRole("button", { name: "Estimate selected generation" })).not.toBeInTheDocument();
 });
 it("lists experiments as a thumbnail grid with relative dates and delete", async () => {
-  useExperimentList.mockReturnValue({ data: [{ id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "My grid test" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date(Date.now() - 7200 * 1000).toISOString(), variants: [{ slides: [{ index: 0, url: "https://example.test/a.jpg", status: "done" }] }] }], isPending: false, isError: false, refetch: vi.fn() });
+  useExperimentList.mockReturnValue({ data: { pages: [{ experiments: [{ id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "My grid test" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date(Date.now() - 7200 * 1000).toISOString(), variants: [{ slides: [{ index: 0, url: "https://example.test/a.jpg", status: "done" }] }] }], nextOffset: null }] }, isPending: false, isError: false, refetch: vi.fn(), hasNextPage: false, isFetchingNextPage: false, fetchNextPage: vi.fn() });
   api.deleteExperiment.mockResolvedValue({ deleted: true });
   client = new QueryClient();
   render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
@@ -191,11 +191,11 @@ it("lists experiments as a thumbnail grid with relative dates and delete", async
 });
 it("switches to line view and bulk-deletes selected experiments", async () => {
   localStorage.setItem("experiments-view", "grid");
-  useExperimentList.mockReturnValue({ data: [
+  useExperimentList.mockReturnValue({ data: { pages: [{ experiments: [
     { id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "Grid one" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date().toISOString(), variants: [{ slides: [{ index: 0, url: "https://example.test/a.jpg", status: "done" }] }] },
     { id: "e10", workspaceId: "w1", status: "failed", instructions: { goal: "Line two" }, variantCount: 1, slideCount: 3, creditsCharged: 2, maxCredits: 50, createdAt: new Date().toISOString(), variants: [] },
-  ], isPending: false, isError: false, refetch: vi.fn() });
-  api.deleteExperiment.mockResolvedValue({ deleted: true });
+  ], nextOffset: 2 }, { experiments: [], nextOffset: null }] }, isPending: false, isError: false, refetch: vi.fn(), hasNextPage: true, isFetchingNextPage: false, fetchNextPage: vi.fn() });
+  api.deleteExperiments.mockResolvedValue({ deleted: 2, failed: [] });
   client = new QueryClient();
   render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
   expect(await screen.findByText("Grid one")).toBeInTheDocument();
@@ -207,18 +207,30 @@ it("switches to line view and bulk-deletes selected experiments", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Delete selected…" }));
   expect(await screen.findByText("Delete 2 experiments?")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
-  await waitFor(() => expect(api.deleteExperiment).toHaveBeenCalledTimes(2));
-  expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e9");
-  expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e10");
+  await waitFor(() => expect(api.deleteExperiments).toHaveBeenCalledWith("token", "w1", ["e9", "e10"]));
   expect(screen.queryByText("2 selected")).not.toBeInTheDocument();
+  // A second page exists — Load more is offered after the delete refresh.
+  expect(screen.getByRole("button", { name: /Load more/ })).toBeInTheDocument();
+});
+it("offers load-more pagination for a longer history", async () => {
+  localStorage.setItem("experiments-view", "line");
+  const page1 = [{ id: "a1", workspaceId: "w1", status: "completed", instructions: { goal: "Row one" }, variantCount: 1, slideCount: 3, creditsCharged: 1, maxCredits: 10, createdAt: new Date().toISOString(), variants: [] },
+    { id: "a2", workspaceId: "w1", status: "completed", instructions: { goal: "Row two" }, variantCount: 1, slideCount: 3, creditsCharged: 1, maxCredits: 10, createdAt: new Date().toISOString(), variants: [] }];
+  useExperimentList.mockReturnValue({ data: { pages: [{ experiments: page1, nextOffset: 2 }] }, isPending: false, isError: false, refetch: vi.fn(), hasNextPage: true, isFetchingNextPage: false, fetchNextPage: vi.fn() });
+  client = new QueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByText("Row one")).toBeInTheDocument();
+  expect(screen.getByText("Row two")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Load more/ }));
+  expect(useExperimentList).toHaveBeenCalled();
 });
 it("reports partial bulk-delete failures instead of a native alert", async () => {
   localStorage.setItem("experiments-view", "line");
-  useExperimentList.mockReturnValue({ data: [
+  useExperimentList.mockReturnValue({ data: { pages: [{ experiments: [
     { id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "Grid one" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date().toISOString(), variants: [] },
     { id: "e10", workspaceId: "w1", status: "generating", instructions: { goal: "Line two" }, variantCount: 1, slideCount: 3, creditsCharged: 2, maxCredits: 50, createdAt: new Date().toISOString(), variants: [] },
-  ], isPending: false, isError: false, refetch: vi.fn() });
-  api.deleteExperiment.mockImplementation(async (_t, _w, id) => { if (id === "e10") throw new Error("experiment is still running"); return { deleted: true }; });
+  ], nextOffset: null }] }, isPending: false, isError: false, refetch: vi.fn(), hasNextPage: false, isFetchingNextPage: false, fetchNextPage: vi.fn() });
+  api.deleteExperiments.mockResolvedValue({ deleted: 1, failed: [{ id: "e10", code: "active_experiment", message: "experiment is still running" }] });
   client = new QueryClient();
   render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
   expect(await screen.findByText("Grid one")).toBeInTheDocument();
@@ -227,7 +239,7 @@ it("reports partial bulk-delete failures instead of a native alert", async () =>
   fireEvent.click(screen.getByRole("button", { name: "Delete selected…" }));
   fireEvent.click(await screen.findByRole("button", { name: "Delete 2" }));
   expect(await screen.findByText(/Deleted 1 of 2/)).toBeInTheDocument();
-  expect(screen.getByText(/experiment is still running/)).toBeInTheDocument();
+  expect(screen.getByText(/Line two: experiment is still running/)).toBeInTheDocument();
 });
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
