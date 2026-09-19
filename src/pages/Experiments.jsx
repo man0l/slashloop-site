@@ -144,38 +144,88 @@ export default function Experiments() {
   </main>;
 }
 
+const VIEW_KEY = "experiments-view";
 export function ExperimentList({ accessToken, workspaceId }) {
   const query = useExperimentList({ accessToken, workspaceId });
   const qc = useQueryClient();
   const [deleting, setDeleting] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [view, setView] = useState(() => { try { return localStorage.getItem(VIEW_KEY) === "line" ? "line" : "grid"; } catch { return "grid"; } });
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
   if (!query.data.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
+  const experiments = query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId);
   const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
+  const goalOf = (e) => e.instructions?.goal || e.title || "Untitled experiment";
   const onDelete = async () => {
     if (!pendingDelete) return;
     setDeleting(pendingDelete.id);
     try { await deleteExperiment(accessToken, workspaceId, pendingDelete.id); await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) }); }
-    catch (err) { window.alert(err.message || "Delete failed."); }
+    catch (err) { setBulkResult({ deleted: 0, failed: [{ goal: goalOf(pendingDelete), reason: err.message || "Delete failed." }] }); }
     finally { setDeleting(""); setPendingDelete(null); }
   };
+  const switchView = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
+  const toggleSelect = (id) => setSelectedIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  const allSelected = experiments.length > 0 && experiments.every((e) => selectedIds.includes(e.id));
+  const selectedActive = selectedIds.filter((id) => isExperimentActive(experiments.find((e) => e.id === id))).length;
+  async function onDeleteBulk() {
+    if (!selectedIds.length || bulkBusy) return;
+    setBulkBusy(true); setBulkResult(null);
+    let deleted = 0; const failed = [];
+    for (const id of selectedIds) {
+      try { await deleteExperiment(accessToken, workspaceId, id); deleted++; }
+      catch (err) { failed.push({ goal: goalOf(experiments.find((e) => e.id === id)) || id, reason: err.message || "delete failed" }); }
+    }
+    await qc.invalidateQueries({ queryKey: experimentKey(accessToken, workspaceId) });
+    setSelectedIds([]); setBulkConfirm(false); setBulkBusy(false);
+    if (failed.length) setBulkResult({ deleted, failed });
+  }
+  const selectBox = (e) => <input type="checkbox" aria-label={`Select ${goalOf(e)}`} checked={selectedIds.includes(e.id)} onChange={() => toggleSelect(e.id)} className="w-4 h-4 cursor-pointer" />;
   return <div>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{query.data.filter((e) => !e.workspaceId || e.workspaceId === workspaceId).map((e) => {
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div role="group" aria-label="View" className="inline-flex rounded-lg overflow-hidden" style={{ border: `1px solid ${T.line}` }}>
+        {[["grid", "Grid"], ["line", "Line"]].map(([v, label]) => <button key={v} type="button" aria-pressed={view === v} onClick={() => switchView(v)} className="px-3.5 py-1.5 text-xs font-semibold" style={view === v ? { background: T.ink, color: "white" } : { background: T.card, color: T.muted }}>{label}</button>)}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: T.muted }}><input type="checkbox" aria-label="Select all experiments" checked={allSelected} onChange={() => setSelectedIds(allSelected ? [] : experiments.map((e) => e.id))} className="w-4 h-4" />Select all</label>
+        {selectedIds.length > 0 && <span className="text-xs" style={{ color: T.muted }}>{selectedIds.length} selected</span>}
+        {selectedIds.length > 0 && <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(true)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: "#FFF0E8", color: "#9B2C23", border: `1px solid #9B2C23` }}>Delete selected…</button>}
+      </div>
+    </div>
+    {bulkResult && <p role="alert" className="rounded-lg p-3 text-sm mb-3" style={{ background: "#FFF0E8", color: "#9B2C23" }}>Deleted {bulkResult.deleted} of {bulkResult.deleted + bulkResult.failed.length}. {bulkResult.failed.length} failed — {bulkResult.failed[0]?.reason} (running experiments are kept).</p>}
+    {view === "grid" ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{experiments.map((e) => {
       const thumbs = thumbsOf(e);
-      return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow" style={panel}>
+      return <Link key={e.id} to={`/experiments/${encodeURIComponent(e.id)}`} className="block rounded-xl overflow-hidden hover:shadow-md transition-shadow relative" style={panel}>
         <div className="relative flex" style={{ height: 76 }}>
           {thumbs.length ? thumbs.map((url) => <img key={url} src={url} alt="" loading="lazy" className="min-w-0 flex-1 object-cover h-full" style={{ borderRight: `1px solid ${T.line}` }} />) : <div className="w-full h-full flex items-center justify-center text-xl" style={{ background: T.paper, color: T.line }}>▨</div>}
-          <button type="button" aria-label={`Delete ${e.instructions?.goal || "experiment"}`} title="Delete" disabled={deleting === e.id} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setPendingDelete(e); }} className="absolute top-1.5 right-1.5 rounded-full w-6 h-6 text-xs font-bold leading-none" style={{ background: "rgba(255,255,255,.92)", color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
+          <span className="absolute top-1.5 left-1.5 rounded-full w-6 h-6 inline-flex items-center justify-center" style={{ background: "rgba(255,255,255,.92)", border: `1px solid ${T.line}` }} onClick={(ev) => ev.stopPropagation()}>{selectBox(e)}</span>
+          <button type="button" aria-label={`Delete ${goalOf(e)}`} title="Delete" disabled={deleting === e.id} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setPendingDelete(e); }} className="absolute top-1.5 right-1.5 rounded-full w-6 h-6 text-xs font-bold leading-none" style={{ background: "rgba(255,255,255,.92)", color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
         </div>
         <div className="p-4 space-y-2">
-          <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{e.instructions?.goal || e.title || "Untitled experiment"}</h2>
+          <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{goalOf(e)}</h2>
           <div className="flex items-center justify-between gap-2"><Status status={e.status} /><span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span></div>
           <p className="text-xs m-0" title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined} style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? timeAgo(e.createdAt) : ""}</p>
         </div>
       </Link>;
-    })}</div>
+    })}</div> : <ul className="rounded-xl overflow-hidden" style={panel}>
+      {experiments.map((e, i) => {
+        const thumbs = thumbsOf(e);
+        return <li key={e.id} className="flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 py-2.5" style={{ borderBottom: i < experiments.length - 1 ? `1px solid ${T.line}` : "none", background: selectedIds.includes(e.id) ? T.paper : T.card }}>
+          <span className="shrink-0" onClick={(ev) => ev.stopPropagation()}>{selectBox(e)}</span>
+          {thumbs[0] ? <img src={thumbs[0]} alt="" loading="lazy" className="rounded object-cover shrink-0" style={{ width: 34, height: 56, border: `1px solid ${T.line}` }} /> : <span aria-hidden="true" className="rounded shrink-0 inline-flex items-center justify-center text-lg" style={{ width: 34, height: 56, background: T.paper, color: T.line, border: `1px solid ${T.line}` }}>▨</span>}
+          <Link to={`/experiments/${encodeURIComponent(e.id)}`} className="min-w-0 flex-1"><span className="block text-sm font-bold truncate" style={{ ...fD, fontSize: 14 }}>{goalOf(e)}</span><span className="block text-xs" style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · <span title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined}>{e.createdAt ? timeAgo(e.createdAt) : ""}</span></span></Link>
+          <span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span>
+          <Status status={e.status} />
+          <button type="button" aria-label={`Delete ${goalOf(e)}`} title="Delete" disabled={deleting === e.id} onClick={() => setPendingDelete(e)} className="rounded-full w-6 h-6 text-xs font-bold leading-none shrink-0" style={{ background: T.paper, color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
+        </li>;
+      })}
+    </ul>}
     <ConfirmDialog open={!!pendingDelete} danger busy={deleting !== ""} title="Delete experiment?" message={pendingDelete ? `Delete “${pendingDelete.instructions?.goal || "this experiment"}”? Its generated images are removed too. This cannot be undone.` : ""} confirmLabel="Delete" onConfirm={onDelete} onCancel={() => setPendingDelete(null)} />
+    <ConfirmDialog open={bulkConfirm} danger busy={bulkBusy} title={`Delete ${selectedIds.length} experiments?`} message={`Delete ${selectedIds.length} selected experiments and their generated images? This cannot be undone.${selectedActive ? ` ${selectedActive} ${selectedActive === 1 ? "is" : "are"} still running — the server keeps running experiments.` : ""}`} confirmLabel={`Delete ${selectedIds.length}`} onConfirm={onDeleteBulk} onCancel={() => setBulkConfirm(false)} />
   </div>;
 }
 

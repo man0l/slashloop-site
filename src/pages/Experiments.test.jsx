@@ -189,6 +189,46 @@ it("lists experiments as a thumbnail grid with relative dates and delete", async
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e9"));
 });
+it("switches to line view and bulk-deletes selected experiments", async () => {
+  localStorage.setItem("experiments-view", "grid");
+  useExperimentList.mockReturnValue({ data: [
+    { id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "Grid one" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date().toISOString(), variants: [{ slides: [{ index: 0, url: "https://example.test/a.jpg", status: "done" }] }] },
+    { id: "e10", workspaceId: "w1", status: "failed", instructions: { goal: "Line two" }, variantCount: 1, slideCount: 3, creditsCharged: 2, maxCredits: 50, createdAt: new Date().toISOString(), variants: [] },
+  ], isPending: false, isError: false, refetch: vi.fn() });
+  api.deleteExperiment.mockResolvedValue({ deleted: true });
+  client = new QueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByText("Grid one")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Line" }));
+  expect(screen.getByRole("button", { name: "Line" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Grid one" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Line two" }));
+  expect(screen.getByText("2 selected")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete selected…" }));
+  expect(await screen.findByText("Delete 2 experiments?")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete 2" }));
+  await waitFor(() => expect(api.deleteExperiment).toHaveBeenCalledTimes(2));
+  expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e9");
+  expect(api.deleteExperiment).toHaveBeenCalledWith("token", "w1", "e10");
+  expect(screen.queryByText("2 selected")).not.toBeInTheDocument();
+});
+it("reports partial bulk-delete failures instead of a native alert", async () => {
+  localStorage.setItem("experiments-view", "line");
+  useExperimentList.mockReturnValue({ data: [
+    { id: "e9", workspaceId: "w1", status: "completed", instructions: { goal: "Grid one" }, variantCount: 2, slideCount: 3, creditsCharged: 5, maxCredits: 100, createdAt: new Date().toISOString(), variants: [] },
+    { id: "e10", workspaceId: "w1", status: "generating", instructions: { goal: "Line two" }, variantCount: 1, slideCount: 3, creditsCharged: 2, maxCredits: 50, createdAt: new Date().toISOString(), variants: [] },
+  ], isPending: false, isError: false, refetch: vi.fn() });
+  api.deleteExperiment.mockImplementation(async (_t, _w, id) => { if (id === "e10") throw new Error("experiment is still running"); return { deleted: true }; });
+  client = new QueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByText("Grid one")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Grid one" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Line two" }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete selected…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Delete 2" }));
+  expect(await screen.findByText(/Deleted 1 of 2/)).toBeInTheDocument();
+  expect(screen.getByText(/experiment is still running/)).toBeInTheDocument();
+});
 it("resends the same key after a lost mutation response", async () => {
   api.mutateExperiment.mockRejectedValueOnce(new Error("Network lost")); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" })); fireEvent.click(await screen.findByRole("button", { name: "Approve & start generation" }));
   fireEvent.click(await screen.findByRole("button", { name: "Recheck original request" }));
