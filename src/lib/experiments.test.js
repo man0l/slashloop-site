@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiFetch } from "./http.js";
-import { createExperiment, estimateBlockReason, estimateExperiment, experimentPollInterval, getExperiment, listExperiments, mutateExperiment, mutationKey, SOURCE_LIMIT, toggleSource, updateExperimentVariant, validateExperiment, walletCredits } from "./experiments.js";
+import { createExperiment, estimateBlockReason, estimateExperiment, experimentPollInterval, explainExperimentError, getExperiment, listExperiments, mutateExperiment, mutationKey, SOURCE_LIMIT, toggleSource, updateExperimentVariant, validateExperiment, walletCredits } from "./experiments.js";
 vi.mock("./http.js", () => ({ apiFetch: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
 const valid = () => ({ workspaceId: "w1", videoIds: ["v1"], variantCount: 3, slideCount: 5, maxCredits: 80, instructions: { goal: "Find a hook", mode: "controlled", variables: ["hook"] } });
@@ -47,4 +47,18 @@ it("fails closed for missing estimates and unavailable credit balances", async (
   expect(walletCredits({ workspaceCredits: 500, remainingCredits: 204 })).toBe(500);
   expect(estimateBlockReason({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 500 }, { maxCredits: 210, creditsCharged: 6 })).toBe("");
   expect(estimateBlockReason({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 204 }, { maxCredits: 210, creditsCharged: 6 })).toMatch(/Not enough/);
+});
+
+it("explains job causes with what happened and what to do", () => {
+  const credits = explainExperimentError("provider_result_rejected:credits_exhausted_402");
+  expect(credits.what).toMatch(/OpenRouter credits ran out/);
+  expect(credits.fix).toMatch(/openrouter\.ai\/settings\/credits/);
+  const wave = explainExperimentError("provider_result_rejected:all_candidates_failed[OpenRouter image error 400: policy | timeout]");
+  expect(wave.what).toMatch(/Every image candidate/);
+  expect(wave.fix).toMatch(/policy/);
+  const timeout = explainExperimentError("provider_outcome_unknown:The operation timed out. The operation timed out.");
+  expect(timeout.what).toMatch(/did not answer in time/);
+  expect(explainExperimentError("provider_result_rejected:insufficient_budget").fix).toMatch(/Account page/);
+  expect(explainExperimentError("something entirely novel")).toBe(null);
+  expect(explainExperimentError("")).toBe(null);
 });

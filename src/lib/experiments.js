@@ -5,6 +5,55 @@ export const ACTIVE_EXPERIMENT_STATES = new Set(["queued", "analyzing", "synthes
 export const isExperimentActive = (experiment) => ACTIVE_EXPERIMENT_STATES.has(experiment?.status);
 export const experimentPollInterval = (query) => isExperimentActive(query.state.data) ? 2500 : false;
 export const errorText = (error) => typeof error === "string" ? error : error?.message || error?.code || "";
+/** Strip the engine's cause wrapper (experiments/engine.ts jobError) to the bare cause. */
+export const bareErrorCause = (error) => {
+  const raw = errorText(error);
+  return raw.replace(/^provider_result_rejected:|^provider_outcome_unknown:/, "") || raw;
+};
+/**
+ * What happened + what to do, for every cause the backend can put on a job or
+ * experiment (src/experiments/engine.ts, providers.ts). Returns { what, fix }
+ * or null when the cause is unknown — callers fall back to the raw text.
+ */
+export function explainExperimentError(error) {
+  const cause = bareErrorCause(error);
+  if (!cause) return null;
+  const wave = /^all_candidates_failed\[(.+)\]$/.exec(cause);
+  if (wave) return { what: "Every image candidate was rejected by the provider.", fix: `Provider said: ${wave[1]}. Retry the slide; if the reason is content-related, reword the overlay copy in the brief.` };
+  const table = [
+    [/credits_exhausted/, "OpenRouter credits ran out — no new images can render.", "Top up at openrouter.ai/settings/credits, then retry the failed jobs. Charged slides were refunded."],
+    [/^auth/, "The provider API key was rejected.", "Check the OPENROUTER_API_KEY secret on the worker, then retry."],
+    [/^rate_limited/, "The provider rate-limited this request.", "It retries automatically with backoff; use Retry if it stays stuck."],
+    [/timeout|timed out/i, "The provider did not answer in time.", "It retries automatically; if it keeps timing out, retry later."],
+    [/^provider_server/, "The provider had a server error.", "Usually transient — retry the job."],
+    [/^gemini_rejected_(\d+)/, "Google's analysis endpoint rejected the request.", "Retry; a repeated 4xx means the source may need replacing."],
+    [/^gemini_(invalid_json|empty_result)/, "The analysis model returned an unusable response.", "It retries automatically; persistent failures mean the source is hard to read — try a different original."],
+    [/^media_unavailable/, "A source image or video could not be fetched.", "Re-check the original in Gallery, then retry."],
+    [/^media_too_large|^visual_input_memory_limit/, "A source file is too large to analyze.", "Remove that original from the selection and pick a smaller one."],
+    [/^unsupported_image/, "A source slide is in an unsupported image format.", "Replace that original with a JPG/PNG/WebP version."],
+    [/^carousel_over_16/, "A source has more than 16 slides.", "Remove that original from the selection."],
+    [/^video_over_180/, "A source video is longer than 3 minutes.", "Remove that original from the selection."],
+    [/^source_not_found/, "A selected original no longer exists in this workspace.", "Remove it from the experiment and re-create or retry."],
+    [/^source_hydration_failed/, "The source media could not be downloaded for analysis.", "Retry; if it repeats, the original may be gone from its platform."],
+    [/^incomplete_visual_analysis/, "The analysis did not cover every slide of a source.", "It retries automatically; if it persists, the source may be unreadable."],
+    [/^(grok|gemini)_invalid_json|^invalid_schema/, "The model returned malformed JSON.", "It retries automatically with the same inputs."],
+    [/^brief_candidates_invalid/, "The planner could not produce usable variant briefs.", "It retries automatically; if all attempts fail, re-plan with a clearer goal."],
+    [/^identical_storyboard/, "Two variants told the exact same story, which would test nothing.", "The planner retries automatically; add a direction hint to separate the angles."],
+    [/^(unapproved_variable|not_one_variable|incorrect_changed_variables|incorrect_variable_value|baseline_has_changes)/, "The planner proposed changes outside the agreed variables.", "It retries automatically; if it persists, re-plan in exploration mode."],
+    [/^variant_count/, "The planner returned the wrong number of variants.", "It retries automatically; large variant counts may deliver fewer variants than requested."],
+    [/^locked_constraints/, "A brief drifted from the experiment's slide count or locked rules.", "It retries automatically."],
+    [/^(duplicate_pattern|invalid_source_frequency|unverified_evidence)/, "The pattern report cited evidence that does not match the sources.", "It retries automatically."],
+    [/^invalid_image_size/, "The provider returned a broken image.", "Retry the slide."],
+    [/^(missing_frozen_brief|invalid_slide)/, "The variant's approved brief is missing or out of date.", "Re-request the estimate for that variant."],
+    [/^openrouter_not_configured/, "The server has no OpenRouter API key set.", "Set the OPENROUTER_API_KEY secret on the worker."],
+    [/^reference_/, "A reference image for this slide is unavailable.", "Retry; if it persists, check the original's slides in Gallery."],
+    [/^insufficient_budget/, "Not enough app credits on this workspace for this task.", "Add credits on the Account page, then retry."],
+    [/^preparation_failed/, "The job could not be prepared against the database.", "Retry; if it repeats, check the worker logs."],
+  ];
+  const hit = table.find(([match]) => match.test(cause));
+  if (!hit) return null;
+  return { what: hit[1], fix: hit[2] };
+}
 export function hasUnknownOutcome(value) {
   if (!value) return false;
   return /unknown|indeterminate|uncertain|reconcil|outcome_pending/i.test(JSON.stringify(value));

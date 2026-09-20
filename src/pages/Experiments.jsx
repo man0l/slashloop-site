@@ -9,7 +9,8 @@ import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
 import { ExperimentButton } from "../components/ExperimentCreate.jsx";
 import ExperimentVariant from "../components/ExperimentVariant.jsx";
 import { experimentKey, useExperimentDetail, useExperimentList } from "../lib/useExperiments.js";
-import { errorText, deleteExperiment, deleteExperiments, estimateBlockReason, estimateExperiment, hasUnknownOutcome, isExperimentActive, mutateExperiment, mutationKey, updateExperimentVariant } from "../lib/experiments.js";
+import { errorText, explainExperimentError, deleteExperiment, deleteExperiments, estimateBlockReason,
+estimateExperiment, hasUnknownOutcome, isExperimentActive, mutateExperiment, mutationKey, updateExperimentVariant } from "../lib/experiments.js";
 import { downloadSlideshowZip } from "../lib/slideshowZip.js";
 import { ScheduleDrawer } from "../calendar/ScheduleDrawer.jsx";
 import { createApiAdapter } from "../lib/social.js";
@@ -54,11 +55,20 @@ const CAUSE_LABEL = {
   not_one_variable: "controlled mode requires exactly one changed variable",
   invalid_schema: "model JSON did not match the schema",
   locked_constraints: "slide count or locked constraints did not match",
+  identical_storyboard: "two variants told the same story",
+  all_candidates_failed: "every image candidate was rejected",
+  media_unavailable: "a source image could not be fetched",
+  media_too_large: "a source file was too large",
+  unsupported_image: "unsupported slide image format",
+  incomplete_visual_analysis: "analysis missed some slides",
+  source_hydration_failed: "source media download failed",
+  insufficient_budget: "not enough workspace credits",
+  invalid_image_size: "provider returned a broken image",
 };
 function causeText(error) {
   if (!error) return "";
   const raw = String(error).replace(/^provider_result_rejected:?/, "").replace(/^provider_outcome_unknown:?/, "") || String(error);
-  const key = raw.replace(/_\d+$/, "");
+  const key = raw.replace(/_\d+$/, "").replace(/\[.*$/, "");
   return CAUSE_LABEL[raw] || CAUSE_LABEL[key] || raw;
 }
 function jobsOf(experiment, kinds) {
@@ -377,9 +387,16 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
       {active && <p role="status" className="text-sm" style={{ color: T.teal }}>Running in background · Cancel stops queued work only.</p>}
       {(() => {
         const failing = (experiment.jobs ?? []).find((j) => j.error && ["pending", "running", "failed", "unknown"].includes(j.status));
-        if (!failing?.error) return experiment.error ? <p role="alert" style={{ color: "#9B2C23" }}>{errorText(experiment.error)}</p> : null;
-        const when = failing.status === "running" ? "running now" : failing.status === "pending" && failing.nextAttemptAt ? retryLabel(failing.nextAttemptAt) : failing.status;
-        return <p role="alert" className="rounded-lg p-3 text-sm" style={{ background: "#FFF0E8", color: "#9B2C23" }}>{failing.kind} attempt {failing.attempts ?? "?"}: {causeText(failing.error)}{when ? ` · ${when}` : ""}</p>;
+        const rawError = failing?.error ?? experiment.error;
+        if (!rawError) return null;
+        const expl = explainExperimentError(rawError);
+        const when = failing ? (failing.status === "running" ? "running now" : failing.status === "pending" && failing.nextAttemptAt ? retryLabel(failing.nextAttemptAt) : failing.status) : "";
+        if (!expl) {
+          const label = failing ? `${failing.kind === "slide" ? `slide ${(failing.index ?? 0) + 1}` : failing.kind} attempt ${failing.attempts ?? "?"}` : "experiment";
+          return <p role="alert" style={{ color: "#9B2C23" }}>{label}: {causeText(rawError)}{when ? ` · ${when}` : ""}</p>;
+        }
+        const label = failing ? `${failing.kind === "slide" ? `slide ${(failing.index ?? 0) + 1}` : failing.kind} · attempt ${failing.attempts ?? "?"}` : "experiment";
+        return <div role="alert" className="rounded-lg p-3 text-sm space-y-1" style={{ background: "#FFF0E8", color: "#9B2C23" }}><p className="m-0 font-semibold">{expl.what}</p><p className="m-0">{expl.fix}</p><p className="m-0 text-xs" style={{ color: T.muted }}>{label}{when ? ` · ${when}` : ""} · raw cause: {errorText(rawError)}</p></div>;
       })()}
     </section>
     {(experiment.styleFormula || experiment.briefJudge || experiment.jobs?.length || variants.some(v => v.slides?.some(s => s.prompt))) && <details className="rounded-xl p-5" style={panel} open={!experiment.briefJudge && !experiment.styleFormula}><summary className="cursor-pointer font-semibold text-sm">Pipeline data — grok drafts, Jev decisions, render prompts</summary><div className="mt-4 space-y-4 text-xs" style={{ color: T.muted }}>
