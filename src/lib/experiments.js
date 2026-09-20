@@ -22,6 +22,7 @@ export function explainExperimentError(error) {
   if (wave) return { what: "Every image candidate was rejected by the provider.", fix: `Provider said: ${wave[1]}. Retry the slide; if the reason is content-related, reword the overlay copy in the brief.` };
   const table = [
     [/credits_exhausted/, "OpenRouter credits ran out — no new images can render.", "Top up at openrouter.ai/settings/credits, then retry the failed jobs. Charged slides were refunded."],
+    [/in_flight_budget/, "Too many parallel requests for the current OpenRouter balance — the in-flight budget is full.", "It retries automatically after the cooldown. A larger top-up raises this cap and removes it entirely above a threshold."],
     [/^auth/, "The provider API key was rejected.", "Check the OPENROUTER_API_KEY secret on the worker, then retry."],
     [/^rate_limited/, "The provider rate-limited this request.", "It retries automatically with backoff; use Retry if it stays stuck."],
     [/timeout|timed out/i, "The provider did not answer in time.", "It retries automatically; if it keeps timing out, retry later."],
