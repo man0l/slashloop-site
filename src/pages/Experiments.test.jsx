@@ -74,20 +74,29 @@ it("does not offer blind retries for unknown provider outcomes", async () => {
   experiment.status = "needs_review"; experiment.error = { code: "provider_outcome_unknown" }; mount();
   expect(await screen.findByText(/A provider outcome is unknown/)).toBeInTheDocument(); expect(screen.queryByRole("button", { name: /Estimate retry/ })).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: "Estimate selected generation" })).toBeDisabled();
 });
-it("shows a confirmed image rejection and estimates retry without starting another render", async () => {
+it("shows a confirmed image rejection and retries inline from the pipeline", async () => {
   experiment.status = "failed";
   experiment.error = "provider_result_rejected";
   experiment.variants[0].status = "failed";
   experiment.variants[0].error = "provider_result_rejected";
   experiment.variants[0].slides = [{ index: 0, status: "failed", url: null, error: "provider_result_rejected" }];
   mount();
-  expect(await screen.findByText("Recover known failures")).toBeInTheDocument();
+  expect(await screen.findByRole("listitem", { name: /Images: failed/ })).toBeInTheDocument();
+  expect(screen.queryByText("Recover known failures")).not.toBeInTheDocument();
   expect(screen.getAllByText(/provider_result_rejected/).length).toBeGreaterThan(0);
   expect(screen.queryByText(/A provider outcome is unknown/)).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Estimate retry of known failures" }));
+  fireEvent.click(screen.getByRole("button", { name: "Retry Images" }));
   expect(await screen.findByRole("button", { name: "Approve & start retry" })).toBeEnabled();
   expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "generate", ["v1"], expect.any(AbortSignal), undefined);
   expect(api.mutateExperiment).not.toHaveBeenCalled();
+});
+it("retries a failed briefs job inline from the pipeline", async () => {
+  experiment = { ...base(), status: "failed", error: "brief_candidates_invalid", variants: [], report: { summary: "S", patterns: [] }, jobs: [{ id: "b1", kind: "briefs", status: "failed", attempts: 5, error: "brief_candidates_invalid" }] };
+  mount();
+  expect(await screen.findByRole("listitem", { name: /Briefs: failed/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry Briefs" }));
+  expect(await screen.findByRole("button", { name: "Approve & start retry" })).toBeEnabled();
+  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "plan", undefined, expect.any(AbortSignal), ["b1"]);
 });
 it("blocks paid actions for a paused experiment even without an error message", async () => {
   experiment.status = "paused";

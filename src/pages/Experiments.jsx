@@ -25,11 +25,12 @@ function Status({ status }) {
 }
 function Chip({ children, tone, title }) { return <span title={title} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: T.paper, color: tone || T.muted }}>{children}</span>; }
 const STAGE_COLOR = { done: T.teal, failed: "#9B2C23", active: T.teal, pending: T.muted };
-function Stage({ label, note, state }) {
+function Stage({ label, note, state, onRetry, busy }) {
   const color = STAGE_COLOR[state] || T.muted;
   return <li aria-label={`${label}: ${state}${note ? `, ${note}` : ""}`} className="flex items-start gap-1.5 text-xs font-semibold min-w-0" style={{ color }}>
     <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center w-4 h-4 rounded-full text-[10px] leading-none ${state === "active" ? "animate-pulse" : ""}`} style={{ background: state === "pending" ? T.line : color, color: "white" }}>{state === "done" ? "✓" : state === "failed" ? "!" : ""}</span>
     <span>{label}<span className="sr-only"> · {state}</span>{note && <span className="block font-normal" style={{ color: T.muted }}>{note}</span>}</span>
+    {state === "failed" && onRetry && <button type="button" aria-label={`Retry ${label}`} title="Retry" alt="retry" disabled={busy} onClick={onRetry} className="ml-1 inline-flex shrink-0 items-center justify-center w-5 h-5 rounded-full text-xs font-bold leading-none hover:opacity-80 disabled:opacity-50" style={{ border: `1px solid ${color}`, color, background: "transparent" }}><span aria-hidden="true">↻</span></button>}
   </li>;
 }
 function retryLabel(ts) {
@@ -86,7 +87,7 @@ function jobsNote(jobs) {
 function joinNotes(...parts) {
   return parts.filter(Boolean).join(" · ");
 }
-function Pipeline({ experiment, completedInputs }) {
+function Pipeline({ experiment, completedInputs, busy, onRetryJob, onRetryStage }) {
   const total = experiment.inputs?.length ?? 0;
   const sourcesDone = total > 0 && completedInputs === total;
   const planning = ["analyzing", "synthesizing", "planning"].includes(experiment.status);
@@ -107,11 +108,20 @@ function Pipeline({ experiment, completedInputs }) {
   const reportJobs = jobsOf(experiment, ["report"]);
   const briefsJobs = jobsOf(experiment, ["briefs"]);
   const slideJobs = jobsOf(experiment, ["slide"]);
+  // First manually-retryable job per stage (mirrors backend MAX_MANUAL_ATTEMPTS).
+  // Auto-retrying (pending) jobs are left alone; only failed/unknown surface a retry.
+  const firstRetryable = (jobs) => jobs.find((j) => ["failed", "unknown"].includes(j.status) && (j.attempts ?? 0) < 6);
+  const stageRetry = (stageJobs, stage) => {
+    const job = firstRetryable(stageJobs);
+    if (job && onRetryJob) return () => onRetryJob(job);
+    if (onRetryStage) return () => onRetryStage(stage);
+    return undefined;
+  };
   const stages = [
-    { label: "Sources", note: joinNotes(total ? `${completedInputs}/${total}` : "", jobsNote(analysisJobs)), state: sourcesDone ? "done" : experiment.inputs?.some((i) => i.status === "failed" && !hasUnknownOutcome(i.error)) ? "failed" : planning ? "active" : "pending" },
-    { label: "Patterns", note: jobsNote(reportJobs), state: experiment.report ? "done" : planning && (sourcesDone || experiment.status === "synthesizing") ? "active" : failed && sourcesDone ? "failed" : "pending" },
-    { label: "Briefs", note: jobsNote(briefsJobs), state: variants.length > 0 ? "done" : planning && experiment.report ? "active" : failed && experiment.report ? "failed" : "pending" },
-    { label: "Images", note: joinNotes(`${imageCount}${expectedImages ? `/${expectedImages}` : ""} ready`, failedImages ? `${failedImages} failed` : "", jobsNote(slideJobs)), state: completed ? "done" : imageUnknown ? "pending" : imagesActive ? "active" : imageFailure ? "failed" : expectedImages > 0 && imageCount === expectedImages ? "done" : "pending" },
+    { label: "Sources", note: joinNotes(total ? `${completedInputs}/${total}` : "", jobsNote(analysisJobs)), state: sourcesDone ? "done" : experiment.inputs?.some((i) => i.status === "failed" && !hasUnknownOutcome(i.error)) ? "failed" : planning ? "active" : "pending", onRetry: stageRetry(analysisJobs, "plan"), busy },
+    { label: "Patterns", note: jobsNote(reportJobs), state: experiment.report ? "done" : planning && (sourcesDone || experiment.status === "synthesizing") ? "active" : failed && sourcesDone ? "failed" : "pending", onRetry: stageRetry(reportJobs, "plan"), busy },
+    { label: "Briefs", note: jobsNote(briefsJobs), state: variants.length > 0 ? "done" : planning && experiment.report ? "active" : failed && experiment.report ? "failed" : "pending", onRetry: stageRetry(briefsJobs, "plan"), busy },
+    { label: "Images", note: joinNotes(`${imageCount}${expectedImages ? `/${expectedImages}` : ""} ready`, failedImages ? `${failedImages} failed` : "", jobsNote(slideJobs)), state: completed ? "done" : imageUnknown ? "pending" : imagesActive ? "active" : imageFailure ? "failed" : expectedImages > 0 && imageCount === expectedImages ? "done" : "pending", onRetry: stageRetry(slideJobs, "generate"), busy },
   ];
   const jobs = experiment.jobs ?? [];
   return <div className="space-y-3">
@@ -277,6 +287,13 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
   const MANUAL_RETRY_ATTEMPT_LIMIT = 6;
   const retryableJob = (kind, target, index) => !active && experiment?.jobs?.find((j) => j.kind === kind && j.target === target && (index === undefined || j.index === index) && ["failed", "unknown"].includes(j.status) && (j.attempts ?? 0) < MANUAL_RETRY_ATTEMPT_LIMIT);
   function retryJob(job) { return prepare("retry", job.kind === "slide" ? "generate" : "plan", { taskIds: [job.id] }); }
+  // Fallback when a stage failed but no single job row is retryable
+  // (e.g. variant-level failure without a job record): retry all known
+  // failures for that stage. Completed images are kept by the backend.
+  function retryStage(stage) {
+    if (stage === "generate" && knownFailed.length) return prepare("retry", "generate", { variantIds: knownFailed.map((v) => v.id) });
+    return prepare("retry", stage, {});
+  }
 
   function stableKey(action, payload) {
     const fingerprint = JSON.stringify({ action, payload, version: experiment.updatedAt });
@@ -347,12 +364,14 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
   const hasOutputs = variants.some((v) => v.slides?.some((slide) => slide.url));
   const blockReason = approval && estimateBlockReason(approval.estimate, experiment);
   const completedInputs = experiment.inputs?.filter((i) => ["completed", "done", "ready", "analyzed"].includes(i.status)).length ?? 0;
+  const canRetryJobs = !active;
+  const canRetryStage = !active && !unknown && !anyDirty && !uncertain;
   return <div className="space-y-6">
     <Link to="/experiments" className="text-sm underline">All experiments</Link>
     <section className="rounded-xl p-5 sm:p-6 space-y-4" style={panel}>
       <div className="flex flex-wrap justify-between gap-3"><h2 style={{ ...fD, fontSize: 26, fontWeight: 800 }}>{experiment.instructions?.goal || "Experiment"}</h2><Status status={experiment.status} /></div>
       <div className="flex flex-wrap gap-2"><Chip>{experiment.instructions?.mode === "exploration" ? "Exploration" : "One-variable test"}</Chip><Chip>{experiment.variantCount} variants × {experiment.slideCount} slides</Chip><Chip>{experiment.creditsCharged ?? 0}/{experiment.maxCredits} credits used</Chip><Chip>Manual publishing</Chip>{experiment.createdAt && <Chip title={new Date(experiment.createdAt).toLocaleString()}>started {timeAgo(experiment.createdAt)}</Chip>}</div>
-      <Pipeline experiment={experiment} completedInputs={completedInputs} />
+      <Pipeline experiment={experiment} completedInputs={completedInputs} busy={busy} onRetryJob={canRetryJobs ? retryJob : undefined} onRetryStage={canRetryStage ? retryStage : undefined} />
       <details><summary className="text-sm cursor-pointer">Your saved inputs & rules</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{Object.entries(experiment.instructions ?? {}).map(([key, value]) => <div key={key}><dt className="font-semibold">{({ goal: "Goal", brand: "Brand", audience: "Audience", language: "Language", direction: "Creative direction", lockedConstraints: "Keep unchanged", mode: "Test mode", variables: "What may change" })[key] || key}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{key === "mode" ? value === "controlled" ? "Change one thing at a time" : "Explore combinations" : key === "variables" ? value.map((v) => ({ visualStyle: "Visual style", cta: "Call to action" })[v] || v).join(", ") : Array.isArray(value) ? value.join("\n") : displayValue(value) || "Not specified"}</dd></div>)}</dl></details>
       <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}{!active && <ExperimentButton disabled={busy || deleting} onClick={() => setConfirmDelete(true)}>{deleting ? "Deleting…" : "Delete"}</ExperimentButton>}</div>
       {active && <p role="status" className="text-sm" style={{ color: T.teal }}>Running in background · Cancel stops queued work only.</p>}
@@ -382,7 +401,6 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
     </details>
     {!active && experiment.status === "draft" && <section className="rounded-xl p-5 space-y-3" style={panel}><h2 className="font-semibold">Ready to find the patterns?</h2><p className="text-sm" style={{ color: T.muted }}>Review briefs before approving images.</p><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allowPartial} onChange={(e) => { setAllowPartial(e.target.checked); setApproval(null); }} />Allow planning from successfully analyzed sources if some fail</label><ExperimentButton primary disabled={busy || unknown || !!uncertain} onClick={() => prepare("plan", "plan", { allowPartial })}>Estimate analysis & planning</ExperimentButton></section>}
 
-    {!active && !unknown && (["failed", "partial"].includes(experiment.status) || knownFailed.length > 0) && <section className="rounded-xl p-5 space-y-3" style={panel}><h2 className="font-semibold">Recover known failures</h2><p className="text-sm" style={{ color: T.muted }}>Completed images are kept.</p><ExperimentButton disabled={busy || anyDirty || !!uncertain} onClick={() => prepare("retry", knownFailed.length ? "generate" : "plan", knownFailed.length ? { variantIds: knownFailed.map((v) => v.id) } : {})}>Estimate retry of known failures</ExperimentButton></section>}
     {confirmDelete && <ConfirmDialog open danger busy={deleting} title="Delete experiment?" message="Its generated images are removed too. This cannot be undone." confirmLabel="Delete" onConfirm={removeExperiment} onCancel={() => setConfirmDelete(false)} />}
     {schedule && <ScheduleDrawer key={schedule.variant.id} adapter={adapter} mode="create" mediaIsRecreated initialContent={schedule.variant.brief?.caption ?? ""} initialMedia={schedule.images.map((url) => ({ type: "image", url }))} initialDate={new Date()} onClose={() => setSchedule(null)} onSaved={() => { setSchedule(null); setNotice("Scheduling action saved. View Calendar for its publishing status."); }} onError={(err) => setProblem(err.message)} />}
   </div>;

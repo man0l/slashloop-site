@@ -30,6 +30,12 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY_FORM);
+  // Survey: step 1 picks the mode, step 2 fills the mode's form, step 3
+  // reviews the output preview and starts. Both modes share the exact same
+  // pipeline — edit adds one rule on top: strip the old overlay text from the
+  // originals and keep their images.
+  const [step, setStep] = useState(1);
+  const [surveyMode, setSurveyMode] = useState("create");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const inFlight = useRef(false);
@@ -37,9 +43,12 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const keys = useRef(new Map());
   const set = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
+  const isEdit = surveyMode === "edit";
   // Live estimate, recomputed on every keystroke. Server pricing stays the billing authority.
   const storySlides = previewStorySlides(originalSlideCounts) ?? (Number(form.slideCount) || 5);
-  const est = estimateExperimentCredits(videoIds.length, Number(form.variantCount) || 0, storySlides);
+  const effVariantCount = Number(form.variantCount) || 0;
+  const effSlideCount = storySlides;
+  const est = estimateExperimentCredits(videoIds.length, effVariantCount, effSlideCount);
   // Safety cap stays mandatory server-side; derived automatically instead of asked.
   const autoCap = Math.max(30, Math.ceil((est.total * 2) / 10) * 10);
   // Live validation: each field reports its own problem as you type.
@@ -49,11 +58,24 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
     variantCount: Number.isInteger(Number(form.variantCount)) && Number(form.variantCount) >= 1 && Number(form.variantCount) <= 12 ? "" : "Choose 1–12 variants.",
   };
   const firstProblem = errors.goal || errors.sources || errors.variantCount || "";
+  const EDIT_RULE = "Edit the selected originals: strip every existing overlay text from the images, keep the images themselves unchanged, then apply the brief below.";
   async function submit(event) {
     event.preventDefault();
     if (inFlight.current) return;
     const { goal, brand, audience, language, direction, lockedConstraints, mode, variables, customValues, variantCount } = form;
-    const input = { workspaceId, videoIds, variantCount: Number(variantCount), slideCount: storySlides, maxCredits: autoCap, instructions: { goal, brand, audience, language, direction: [direction, customValues && `Desired variable values: ${customValues}`].filter(Boolean).join("\n"), lockedConstraints: lockedConstraints.split("\n").map((s) => s.trim()).filter(Boolean), mode, variables } };
+    const input = {
+      workspaceId,
+      videoIds,
+      variantCount: Number(variantCount),
+      slideCount: storySlides,
+      maxCredits: autoCap,
+      instructions: {
+        goal, brand, audience, language,
+        direction: [isEdit && EDIT_RULE, direction, customValues && `Desired variable values: ${customValues}`].filter(Boolean).join("\n"),
+        lockedConstraints: lockedConstraints.split("\n").map((s) => s.trim()).filter(Boolean),
+        mode, variables,
+      },
+    };
     const error = validateExperiment(input);
     if (error) { setProblem(error); return; }
     const fingerprint = JSON.stringify(input);
@@ -77,8 +99,14 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
     finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   return <section className="my-6 rounded-xl p-5 sm:p-6" style={{ background: T.card, border: `1px solid ${T.line}` }} aria-label="Create experiment">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 style={{ ...fD, fontSize: 24, fontWeight: 800 }}>Create an experiment</h2><p className="mt-1 text-sm" style={{ color: T.muted }}>{videoIds.length} originals · starts for ≈{est.start} credits</p></div><ExperimentButton onClick={onClose} disabled={busy}>Close setup</ExperimentButton></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 style={{ ...fD, fontSize: 24, fontWeight: 800 }}>Create an experiment</h2><p className="mt-1 text-sm" style={{ color: T.muted }}>{videoIds.length} originals · starts for ≈{est.start} credits · step {step} of 3</p></div><ExperimentButton onClick={onClose} disabled={busy}>Close setup</ExperimentButton></div>
+    <div className="mt-3 flex gap-1.5" aria-hidden="true">{[1, 2, 3].map((n) => <span key={n} className="h-1 flex-1 rounded" style={{ background: n <= step ? T.signal : T.line }} />)}</div>
     <form onSubmit={submit} className="mt-5 space-y-5">
+      {step === 1 && <div className="grid sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Experiment mode">
+        {[["edit", "Edit slideshow", "Keep the same images. Strip the old overlay text, then run the full pipeline: choose what changes — hook, character, style, angle — and what stays locked. 1–20 originals."], ["create", "Create variations", "Generate new versions: hook, character, style, caption, call to action or angle. Up to 20 originals."]].map(([value, title, desc]) => <label key={value} className="rounded-lg p-4 cursor-pointer" style={{ background: T.paper, border: `2px solid ${surveyMode === value ? T.signal : T.line}` }}><input type="radio" name="survey-mode" value={value} checked={surveyMode === value} onChange={() => setSurveyMode(value)} /><strong className="block mt-1">{title}</strong><p className="text-sm m-0" style={{ color: T.muted }}>{desc}</p></label>)}
+      </div>}
+      {step === 2 && <>
+      {isEdit && <p className="text-xs rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}`, color: T.muted }}>The old overlay text is stripped from the selected originals first — the same images are then reused for every variant below.</p>}
       <div className="rounded-lg p-4 space-y-2" style={{ background: T.paper }}>
         <ExperimentField label="Start from an example"><select defaultValue="" disabled={busy} onChange={(e) => { const example = EXAMPLES[e.target.value]; if (example) { const { label, ...values } = example; setForm((prev) => ({ ...EMPTY_FORM, ...values, brand: prev.brand, language: prev.language, maxCredits: prev.maxCredits })); } }} style={experimentInputStyle}><option value="" disabled>Choose an example, or write your own below</option>{Object.entries(EXAMPLES).map(([id, example]) => <option key={id} value={id}>{example.label}</option>)}</select></ExperimentField>
         <p className="text-xs" style={{ color: T.muted }}>Replaces creative inputs. Keeps brand, language and credit cap.</p>
@@ -97,24 +125,31 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, o
         <ExperimentField label="Variants (baseline included)"><input type="number" required min={1} max={12} step="1" value={form.variantCount} aria-invalid={!!errors.variantCount} onChange={(e) => set("variantCount", e.target.value)} style={{ ...experimentInputStyle, borderColor: errors.variantCount ? "#B3261E" : T.line }} />{errors.variantCount && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ 1–12 variants</p>}</ExperimentField>
         <div className="flex flex-col gap-1.5 text-sm" style={{ color: T.ink }}><span>Slides per variant</span><p className="m-0 rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}` }}><strong>{storySlides}</strong> story slides<span className="block text-xs font-normal mt-1" style={{ color: T.muted }}>From the originals. A call-to-action slide is omitted when the source has one.</span></p></div>
       </div>
+      </>}
+      {step === 3 && <>
       <p className="text-xs" style={{ color: T.muted }}>Auto stop at <strong>{autoCap} credits</strong> if anything runs away. Image generation is approved separately after brief review.</p>
       <section aria-label="What this experiment will produce" className="rounded-lg p-4 space-y-4" style={{ background: T.paper, border: `1px solid ${T.line}` }}>
         <h3 className="font-semibold">Output preview</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[[videoIds.length, "originals", "▣"], [Number(form.variantCount) || "—", "decks", "▤"], [storySlides || "—", "slides / deck", "▥"], [Number(form.variantCount) * storySlides || "—", "images", "▧"]].map(([count, label, icon]) => <div key={label} className="rounded-lg p-3" style={{ background: T.card, border: `1px solid ${T.line}` }}><span aria-hidden="true" className="text-lg" style={{ color: T.teal }}>{icon}</span><p className="mt-1"><strong className="text-2xl" style={fD}>{count}</strong>{" "}<span className="text-xs" style={{ color: T.muted }}>{label}</span></p></div>)}
+          {[[videoIds.length, "originals", "▣"], [effVariantCount || "—", "decks", "▤"], [effSlideCount || "—", "slides / deck", "▥"], [effVariantCount * effSlideCount || "—", "images", "▧"]].map(([count, label, icon]) => <div key={label} className="rounded-lg p-3" style={{ background: T.card, border: `1px solid ${T.line}` }}><span aria-hidden="true" className="text-lg" style={{ color: T.teal }}>{icon}</span><p className="mt-1"><strong className="text-2xl" style={fD}>{count}</strong>{" "}<span className="text-xs" style={{ color: T.muted }}>{label}</span></p></div>)}
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-medium">
-          <span className="rounded-full px-3 py-1" style={{ background: T.card }}>1 baseline{Number(form.variantCount) > 1 ? ` + ${Number(form.variantCount) - 1} alternative${Number(form.variantCount) === 2 ? "" : "s"}` : " only"}</span>
-          {Number(form.variantCount) > 1 && <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>{form.mode === "controlled" ? `${VARIABLES[form.variables[0]]} changes` : "Combined changes"}</span>}
+          <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{isEdit ? "Same images, old overlay text stripped" : `1 baseline${effVariantCount > 1 ? ` + ${effVariantCount - 1} alternative${effVariantCount === 2 ? "" : "s"}` : " only"}`}</span>
+          {effVariantCount > 1 && <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>{form.mode === "controlled" ? `${VARIABLES[form.variables[0]]} changes` : "Combined changes"}</span>}
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>Manual publishing</span>
           <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>✨ ≈{est.generation} credits for images</span>
         </div>
-        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{[["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || "Use the source patterns"], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Spending cap", `${autoCap} credits (automatic)`]].map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
+        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Overlay text", "Stripped from the originals first"]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || "Use the source patterns"], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Spending cap", `${autoCap} credits (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
       </section>
       {problem && <p role="alert" className="text-sm" style={{ color: "#9B2C23" }}>{problem}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <ExperimentButton primary type="submit" disabled={busy || !!firstProblem} title={firstProblem || undefined}>{busy ? "Starting…" : `✨ Start experiment · ≈${est.start} credits`}</ExperimentButton>
         {firstProblem && !busy && <span className="text-xs" style={{ color: "#B3261E" }}>✎ {firstProblem}</span>}
+      </div>
+      </>}
+      <div className="flex flex-wrap items-center gap-3">
+        {step > 1 && <ExperimentButton onClick={() => setStep(step - 1)} disabled={busy}>← Back</ExperimentButton>}
+        {step < 3 && <ExperimentButton primary onClick={() => setStep(step + 1)} disabled={busy}>Next →</ExperimentButton>}
       </div>
     </form>
   </section>;
