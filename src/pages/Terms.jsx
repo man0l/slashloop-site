@@ -92,8 +92,9 @@ export default function Terms() {
         authority to grant the requested permissions for that account.
       </P>
       <P>
-        We measure site usage to operate and improve the service: an aggregate cookieless
-        counter and <strong>Google Analytics 4</strong> run for all visitors. Google Analytics
+        We measure site usage to operate and improve the service: a first-party aggregate
+        hit counter (which keeps a random visitor id in your browser storage to count repeat
+        visits — no personal data) and <strong>Google Analytics 4</strong> run for all visitors. Google Analytics
         sets cookies only if you accept them in the cookie banner — otherwise it measures
         usage without cookies. Details and your choices are in the Privacy Policy (§5 and §7).
       </P>

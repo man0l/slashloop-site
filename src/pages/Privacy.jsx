@@ -109,7 +109,7 @@ export default function Privacy() {
         <LI>Public short-form video metadata (views, likes, captions, thumbnails) fetched via licensed scrapers for the sources you track (basis: contract — this is the research service).</LI>
         <LI>Media you upload is stored on Cloudflare R2 and, for scheduled video posts, re-encoded to strip metadata before publishing.</LI>
         <LI>Video analysis and brief generation run through AI providers (Google Gemini, OpenRouter) under data-processing agreements (basis: contract). <strong>No solely automated decisions with legal or similarly significant effect</strong> are made about you: scores and drafts are advisory, and nothing publishes without your scheduling action plus your review (TikTok drafts require your in-app release).</LI>
-        <LI>Product analytics: a cookieless aggregate counter (no identifiers) plus Google Analytics 4. Measurement <strong>always runs</strong> — cookieless (no cookies or persistent identifiers, basis: legitimate interests) unless you accept analytics cookies in the cookie banner, which enables richer cookie-based measurement (basis: consent) — see §7.</LI>
+        <LI>Product analytics: a first-party aggregate hit counter (stores only a random visitor id in your browser to count uniques — no personal data) plus Google Analytics 4. Measurement <strong>always runs</strong> — cookieless (no cookies or persistent identifiers, basis: legitimate interests) unless you accept analytics cookies in the cookie banner, which enables richer cookie-based measurement (basis: consent) — see §7.</LI>
       </ul>
 
       <H>6. Subprocessors</H>
