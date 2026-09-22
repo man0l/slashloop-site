@@ -142,3 +142,24 @@ it("edit mode sends no special rules when kept minimal, mirroring create", async
   fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
   await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: ["original1"], variantCount: 3, instructions: expect.objectContaining({ variables: ["hook"], lockedConstraints: [], mode: "controlled", direction: expect.stringContaining("strip every existing overlay text") }) })));
 });
+it("offers supporting overlays for hook tests and sends the flag when checked", async () => {
+  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
+  goCreate();
+  fireEvent.click(screen.getByLabelText(/supporting overlay text/));
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test hooks" } });
+  goReview();
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("Supporting overlays vary");
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ instructions: expect.objectContaining({ variables: ["hook"], varySupportingOverlays: true }) })));
+});
+it("sends slide-1-hook-only by default and hides the option for non-hook variables", async () => {
+  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
+  goCreate();
+  expect(screen.getByLabelText(/supporting overlay text/)).not.toBeChecked();
+  fireEvent.change(screen.getByLabelText("Start from an example"), { target: { value: "portraits" } });
+  expect(screen.queryByLabelText(/supporting overlay text/)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test style" } });
+  goReview();
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ instructions: expect.objectContaining({ variables: ["visualStyle"], varySupportingOverlays: false }) })));
+});

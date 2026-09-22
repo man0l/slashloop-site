@@ -13,7 +13,7 @@ export function ExperimentField({ label, children }) {
   return <label className="flex flex-col gap-1.5 text-sm" style={{ color: T.ink }}><span>{label}</span>{children}</label>;
 }
 const VARIABLES = { hook: "Hook", character: "Character", visualStyle: "Visual style", caption: "Caption", cta: "Call to action", concept: "Concept / angle", slides: "Slide structure" };
-const EMPTY_FORM = { goal: "", brand: "", audience: "", language: "English", direction: "", lockedConstraints: "", mode: "controlled", variables: ["hook"], customValues: "", variantCount: 3, slideCount: 5, maxCredits: "" };
+const EMPTY_FORM = { goal: "", brand: "", audience: "", language: "English", direction: "", lockedConstraints: "", mode: "controlled", variables: ["hook"], varySupportingOverlays: false, customValues: "", variantCount: 3, slideCount: 5, maxCredits: "" };
 const EXAMPLES = {
   hooks: { label: "Compare opening hooks", goal: "Find an opening hook that encourages the first swipe", direction: "Use the selected originals as inspiration for one new story. Test opening hooks without changing the rest of the story.", lockedConstraints: "Keep the character, visual style and story order unchanged\nDo not invent facts or performance claims", variables: ["hook"], customValues: "A question versus a curiosity-led statement", variantCount: 2, slideCount: 3 },
   portraits: { label: "Portrait style pilot", goal: "Compare two visual treatments for a portrait guide", audience: "Adults interested in better portrait photos", direction: "Create a fictional adult portrait guide about lighting, grooming and posture. Use one continuous full-bleed photograph per slide, no collages or split-screen. Avoid medical claims and attractiveness rankings.", lockedConstraints: "Keep the same fictional adult character, clothing and slide story\nKeep captions readable and call to action at most six words", variables: ["visualStyle"], customValues: "Natural everyday photography versus polished editorial photography", variantCount: 2, slideCount: 3 },
@@ -45,6 +45,10 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
   const keys = useRef(new Map());
   const set = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
   const isEdit = surveyMode === "edit";
+  // Supporting overlays only applies to a controlled hook test: each hook
+  // variant may also retell slides 2–7 overlay copy to match its angle while
+  // scenes stay identical. Any other variable set ignores the flag server-side.
+  const hookSupport = form.mode === "controlled" && form.variables.length === 1 && form.variables[0] === "hook";
   // Every selected original becomes its own experiment, so estimates and caps
   // are computed per source and summed. The briefs stage only ever sees one
   // source, which keeps two different concepts from merging into one brief.
@@ -72,7 +76,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
   async function submit(event) {
     event.preventDefault();
     if (inFlight.current) return;
-    const { goal, brand, audience, language, direction, lockedConstraints, mode, variables, customValues, variantCount } = form;
+    const { goal, brand, audience, language, direction, lockedConstraints, mode, variables, varySupportingOverlays, customValues, variantCount } = form;
     const validation = errors.goal || errors.sources || errors.variantCount;
     if (validation) { setProblem(validation); return; }
     inFlight.current = true; setBusy(true); setProblem(""); setStarted(0);
@@ -92,7 +96,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
             goal, brand, audience, language,
             direction: [isEdit && EDIT_RULE, direction, customValues && `Desired variable values: ${customValues}`].filter(Boolean).join("\n"),
             lockedConstraints: lockedConstraints.split("\n").map((s) => s.trim()).filter(Boolean),
-            mode, variables,
+            mode, variables, varySupportingOverlays: hookSupport && varySupportingOverlays,
           },
         };
         const invalid = validateExperiment(input);
@@ -150,8 +154,9 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
         <ExperimentField label="Creative direction"><textarea rows={3} value={form.direction} onChange={(e) => set("direction", e.target.value)} style={experimentInputStyle} /></ExperimentField>
         <ExperimentField label="Keep unchanged (one per line)"><textarea rows={3} value={form.lockedConstraints} onChange={(e) => set("lockedConstraints", e.target.value)} style={experimentInputStyle} placeholder="Keep product name unchanged" /></ExperimentField>
       </div>
-      <ExperimentField label="Test mode"><select value={form.mode} onChange={(e) => setForm((prev) => ({ ...prev, mode: e.target.value, variables: e.target.value === "controlled" ? [prev.variables.find((v) => !["concept", "slides"].includes(v)) || "hook"] : prev.variables }))} style={experimentInputStyle}><option value="controlled">One-variable comparison</option><option value="exploration">Explore combinations</option></select></ExperimentField>
-      {form.mode === "controlled" ? <ExperimentField label="What do you want to change?"><select value={form.variables[0]} onChange={(e) => set("variables", [e.target.value])} style={experimentInputStyle}>{Object.entries(VARIABLES).filter(([key]) => !["concept", "slides"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></ExperimentField> : <fieldset><legend className="text-sm mb-2">Variables to test</legend><div className="flex flex-wrap gap-3">{Object.entries(VARIABLES).map(([key, label]) => <label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={form.variables.includes(key)} onChange={() => set("variables", form.variables.includes(key) ? form.variables.filter((v) => v !== key) : [...form.variables, key])} />{label}</label>)}</div></fieldset>}
+      <ExperimentField label="Test mode"><select value={form.mode} onChange={(e) => setForm((prev) => ({ ...prev, mode: e.target.value, variables: e.target.value === "controlled" ? [prev.variables.find((v) => !["concept", "slides"].includes(v)) || "hook"] : prev.variables, varySupportingOverlays: false }))} style={experimentInputStyle}><option value="controlled">One-variable comparison</option><option value="exploration">Explore combinations</option></select></ExperimentField>
+      {form.mode === "controlled" ? <ExperimentField label="What do you want to change?"><select value={form.variables[0]} onChange={(e) => setForm((prev) => ({ ...prev, variables: [e.target.value], varySupportingOverlays: false }))} style={experimentInputStyle}>{Object.entries(VARIABLES).filter(([key]) => !["concept", "slides"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></ExperimentField> : <fieldset><legend className="text-sm mb-2">Variables to test</legend><div className="flex flex-wrap gap-3">{Object.entries(VARIABLES).map(([key, label]) => <label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={form.variables.includes(key)} onChange={() => setForm((prev) => ({ ...prev, variables: prev.variables.includes(key) ? prev.variables.filter((v) => v !== key) : [...prev.variables, key], varySupportingOverlays: false }))} />{label}</label>)}</div></fieldset>}
+      {hookSupport && <label className="flex items-start gap-2 text-sm rounded-lg px-3 py-2 cursor-pointer" style={{ background: T.paper, border: `1px solid ${T.line}` }}><input type="checkbox" checked={form.varySupportingOverlays} onChange={(e) => set("varySupportingOverlays", e.target.checked)} className="mt-1" /><span><strong>Also test supporting overlay text</strong><span className="block text-xs font-normal mt-1" style={{ color: T.muted }}>Each hook variant may also rewrite slides 2–7 text to match its angle. Scenes stay identical — still a hook test, not a story rewrite.</span></span></label>}
       <ExperimentField label="Desired variable values (optional)"><input value={form.customValues} onChange={(e) => set("customValues", e.target.value)} style={experimentInputStyle} placeholder="Hook: question vs bold claim; character: founder" /></ExperimentField>
       <div className="grid sm:grid-cols-2 gap-4">
         <ExperimentField label="Variants (baseline included)"><input type="number" required min={1} max={12} step="1" value={form.variantCount} aria-invalid={!!errors.variantCount} onChange={(e) => set("variantCount", e.target.value)} style={{ ...experimentInputStyle, borderColor: errors.variantCount ? "#B3261E" : T.line }} />{errors.variantCount && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ 1–12 variants</p>}</ExperimentField>
@@ -170,10 +175,11 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{slidesLabel} slides per deck, from each original</span>
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{isEdit ? "Same images, old overlay text stripped" : `Each deck: 1 baseline${(Number(form.variantCount) || 0) > 1 ? ` + ${(Number(form.variantCount) || 0) - 1} alternative${(Number(form.variantCount) || 0) === 2 ? "" : "s"}` : " only"}`}</span>
           {(Number(form.variantCount) || 0) > 1 && <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{form.mode === "controlled" ? `${VARIABLES[form.variables[0]]} changes` : "Combined changes"}</span>}
+          {hookSupport && form.varySupportingOverlays && <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>Supporting overlays vary</span>}
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>Manual publishing</span>
           <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>✨ ≈{est.generation} credits for images</span>
         </div>
-        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Overlay text", "Stripped from the originals first"]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || "Use the source patterns"], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Spending cap", `${capLabel} credits per experiment, ${capTotal} total (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
+        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Overlay text", "Stripped from the originals first"]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || "Use the source patterns"], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Hook scope", hookSupport ? (form.varySupportingOverlays ? "Hook + supporting overlays (slides 2–7)" : "Slide 1 hook only") : "Not a hook test"], ["Spending cap", `${capLabel} credits per experiment, ${capTotal} total (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
       </section>
       {problem && <p role="alert" className="text-sm" style={{ color: "#B3261E" }}>{problem}</p>}
       <div className="flex flex-wrap items-center gap-3">
