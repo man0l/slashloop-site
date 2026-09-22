@@ -1,7 +1,9 @@
-// Cookie consent state (GDPR/ePrivacy). Google Analytics runs in Consent
-// Mode: index.html defaults both storages to denied, and a grant here flips
-// analytics_storage to granted. The cookieless indiestack counter is always
-// on and needs no consent. Choice persists in localStorage; tests reset it.
+// Cookie consent state (GDPR/ePrivacy). Google Analytics measurement is
+// always on — index.html runs GA4 in Consent Mode, so undecided/rejecting
+// visitors are measured via cookieless pings. Accepting flips
+// analytics_storage to granted, letting GA4 use cookies for richer
+// measurement. The cookieless indiestack counter is always on and needs no
+// consent. Choice persists in localStorage; tests reset it.
 
 export const CONSENT_KEY = "sl-cookie-consent";
 export const OPEN_SETTINGS_EVENT = "sl:cookie-settings";
@@ -49,14 +51,11 @@ export function writeConsent(value) {
   }
   window.gtag?.("consent", "update", {
     ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
     analytics_storage: granted ? "granted" : "denied",
   });
   return granted;
-}
-
-/** Gate for analytics calls — GA4 pageviews/events only fire on accept. */
-export function canTrack() {
-  return readConsent() === "accepted";
 }
 
 /** Test-only: clear the in-memory latch (persistent stores are the test's job). */

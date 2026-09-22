@@ -224,9 +224,11 @@ function Footer() {
   );
 }
 
-/** GDPR cookie banner - analytics (GA4) stays off until accept. Re-opens via
- *  the footer "Cookie settings" link (OPEN_SETTINGS_EVENT). The cookieless
- *  indiestack counter is unaffected and always on. */
+/** GDPR cookie banner. GA4 measurement is always on — undecided/rejecting
+ *  visitors are measured via cookieless pings; Accept grants analytics_storage
+ *  so GA4 may set cookies for richer measurement. Re-opens via the footer
+ *  "Cookie settings" link (OPEN_SETTINGS_EVENT). The cookieless indiestack
+ *  counter is unaffected and always on. */
 function CookieBanner() {
   const [visible, setVisible] = useState(() => readConsent() === null);
 
@@ -251,8 +253,9 @@ function CookieBanner() {
       style={{ background: T.card, border: `1px solid ${T.line}`, boxShadow: "0 12px 30px rgba(0,0,0,0.18)" }}
     >
       <p style={{ ...fM, fontSize: 12.5, color: T.ink, lineHeight: 1.6 }}>
-        We use a sign-in cookie (required) and, with your permission, Google Analytics cookies
-        to understand usage. See <Link to="/privacy" style={{ color: T.signal }}>Privacy</Link>.
+        We use a required sign-in cookie. Usage analytics (Google Analytics) always run —
+        cookieless unless you accept; accepting lets Google Analytics set cookies for richer
+        measurement. See <Link to="/privacy" style={{ color: T.signal }}>Privacy</Link>.
       </p>
       <div className="mt-3 flex gap-2">
         <CTAButton onClick={() => choose("accepted")}>Accept</CTAButton>

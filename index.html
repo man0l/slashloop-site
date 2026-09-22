@@ -26,13 +26,15 @@
       href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <!-- Google tag (gtag.js) — Consent Mode: denied by default, the cookie
-         banner (src/lib/consent.js) grants analytics_storage on accept. -->
+    <!-- Google tag (gtag.js) — Consent Mode. Measurement is always on:
+         undecided/rejecting visitors are measured via cookieless pings; the
+         cookie banner (src/lib/consent.js) grants analytics_storage on accept,
+         enabling GA cookies for richer measurement. -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-Q0CGKDRGRC"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
-      gtag('consent', 'default', { ad_storage: 'denied', analytics_storage: 'denied' });
+      gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'denied' });
       gtag('js', new Date());
       gtag('config', 'G-Q0CGKDRGRC');
     </script>

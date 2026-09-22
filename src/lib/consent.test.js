@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { readConsent, writeConsent, canTrack, resetConsentForTests, CONSENT_KEY } from "./consent.js";
+import { readConsent, writeConsent, resetConsentForTests, CONSENT_KEY } from "./consent.js";
 
 describe("cookie consent", () => {
   beforeEach(() => {
@@ -8,9 +8,8 @@ describe("cookie consent", () => {
     delete window.gtag;
   });
 
-  it("starts undecided and blocks tracking", () => {
+  it("starts undecided", () => {
     expect(readConsent()).toBeNull();
-    expect(canTrack()).toBe(false);
   });
 
   it("accept persists and grants analytics_storage via gtag", () => {
@@ -18,20 +17,23 @@ describe("cookie consent", () => {
     window.gtag = gtag;
     expect(writeConsent("accepted")).toBe(true);
     expect(window.localStorage.getItem(CONSENT_KEY)).toBe("accepted");
-    expect(canTrack()).toBe(true);
     expect(gtag).toHaveBeenCalledWith("consent", "update", {
       ad_storage: "denied",
+      ad_user_data: "denied",
+      ad_personalization: "denied",
       analytics_storage: "granted",
     });
   });
 
-  it("reject persists and keeps analytics denied", () => {
+  it("reject persists and keeps analytics_storage denied", () => {
     const gtag = vi.fn();
     window.gtag = gtag;
     expect(writeConsent("rejected")).toBe(false);
-    expect(canTrack()).toBe(false);
+    expect(window.localStorage.getItem(CONSENT_KEY)).toBe("rejected");
     expect(gtag).toHaveBeenCalledWith("consent", "update", {
       ad_storage: "denied",
+      ad_user_data: "denied",
+      ad_personalization: "denied",
       analytics_storage: "denied",
     });
   });
@@ -42,7 +44,6 @@ describe("cookie consent", () => {
     try {
       writeConsent("accepted");
       expect(readConsent()).toBe("accepted");
-      expect(canTrack()).toBe(true);
     } finally {
       Object.defineProperty(window, "localStorage", { value: store, configurable: true });
     }

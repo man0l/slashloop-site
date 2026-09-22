@@ -28,7 +28,7 @@ const LI = ({ children }) => (
 export default function Privacy() {
   return (
     <section className="max-w-2xl mx-auto px-5 py-14">
-      <p style={{ ...fM, fontSize: 12, color: T.muted }}>Last updated: September 17, 2026</p>
+      <p style={{ ...fM, fontSize: 12, color: T.muted }}>Last updated: September 22, 2026</p>
       <h1 className="mt-2" style={{ ...fD, fontWeight: 900, fontSize: 32, letterSpacing: -0.8 }}>
         Privacy Policy
       </h1>
@@ -109,7 +109,7 @@ export default function Privacy() {
         <LI>Public short-form video metadata (views, likes, captions, thumbnails) fetched via licensed scrapers for the sources you track (basis: contract — this is the research service).</LI>
         <LI>Media you upload is stored on Cloudflare R2 and, for scheduled video posts, re-encoded to strip metadata before publishing.</LI>
         <LI>Video analysis and brief generation run through AI providers (Google Gemini, OpenRouter) under data-processing agreements (basis: contract). <strong>No solely automated decisions with legal or similarly significant effect</strong> are made about you: scores and drafts are advisory, and nothing publishes without your scheduling action plus your review (TikTok drafts require your in-app release).</LI>
-        <LI>Product analytics: a cookieless aggregate counter (no identifiers, basis: legitimate interests) plus Google Analytics 4, which sets cookies and runs <strong>only after you accept</strong> in the cookie banner (basis: consent) — see §7.</LI>
+        <LI>Product analytics: a cookieless aggregate counter (no identifiers) plus Google Analytics 4. Measurement <strong>always runs</strong> — cookieless (no cookies or persistent identifiers, basis: legitimate interests) unless you accept analytics cookies in the cookie banner, which enables richer cookie-based measurement (basis: consent) — see §7.</LI>
       </ul>
 
       <H>6. Subprocessors</H>
@@ -128,11 +128,14 @@ export default function Privacy() {
 
       <H>7. Cookies</H>
       <P>
-        We use a strictly-necessary session cookie for sign-in, and <strong>analytics cookies
-        (Google Analytics 4) only after you accept</strong> in the cookie banner (basis:
-        consent). Rejecting analytics does not affect the service. You can withdraw consent
-        anytime via the “Cookie settings” link in the footer, which re-opens the banner, or by
-        blocking cookies in your browser (sign-in requires the session cookie).
+        We use a strictly-necessary session cookie for sign-in. Google Analytics 4 measures
+        site usage for all visitors: <strong>without cookies unless you accept</strong> in the
+        cookie banner (cookieless measurement — no analytics cookies or persistent identifiers,
+        basis: legitimate interests); <strong>accepting also sets analytics cookies (Google
+        Analytics 4) for richer measurement</strong> (basis: consent). Rejecting analytics
+        cookies does not affect the service and does not turn measurement off. You can change
+        your choice anytime via the “Cookie settings” link in the footer, which re-opens the
+        banner, or by blocking cookies in your browser (sign-in requires the session cookie).
       </P>
 
       <H>8. International transfers</H>

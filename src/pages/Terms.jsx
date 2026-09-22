@@ -25,7 +25,7 @@ const LI = ({ children }) => (
 export default function Terms() {
   return (
     <section className="max-w-2xl mx-auto px-5 py-14">
-      <p style={{ ...fM, fontSize: 12, color: T.muted }}>Last updated: September 17, 2026</p>
+      <p style={{ ...fM, fontSize: 12, color: T.muted }}>Last updated: September 22, 2026</p>
       <h1 className="mt-2" style={{ ...fD, fontWeight: 900, fontSize: 32, letterSpacing: -0.8 }}>
         Terms of Use
       </h1>
@@ -90,6 +90,12 @@ export default function Terms() {
         your behalf; a data-processing addendum is available on request at
         support@slashloop.dev. By connecting a social account you confirm you have the
         authority to grant the requested permissions for that account.
+      </P>
+      <P>
+        We measure site usage to operate and improve the service: an aggregate cookieless
+        counter and <strong>Google Analytics 4</strong> run for all visitors. Google Analytics
+        sets cookies only if you accept them in the cookie banner — otherwise it measures
+        usage without cookies. Details and your choices are in the Privacy Policy (§5 and §7).
       </P>
 
       <H>7. Termination</H>
