@@ -17,7 +17,7 @@ it("omits a CTA slide from original carousel length", async () => {
   // 6 original slides → 5 story slides when a CTA is present.
   cleanup();
   client = new QueryClient();
-  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentCreate accessToken="auth" workspaceId="w1" videoIds={["original1"]} originalSlideCounts={[6]} onClose={() => {}} /></MemoryRouter></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><MemoryRouter><ExperimentCreate accessToken="auth" workspaceId="w1" videoIds={["original1"]} slideCountsByVideo={{ original1: 6 }} onClose={() => {}} /></MemoryRouter></QueryClientProvider>);
   goCreate();
   fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Improve swipe rate" } });
   expect(screen.getByText(/call-to-action slide is omitted/i)).toBeInTheDocument();
@@ -49,7 +49,7 @@ it("shows live validation while the form is incomplete", () => {
   expect(screen.getByRole("button", { name: /Start experiment/ })).toBeEnabled();
 });
 it("validates selection limits before draft dispatch", async () => {
-  mount(Array.from({ length: 21 }, (_, i) => String(i))); goCreate(); fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test" } }); goReview(); fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  mount(Array.from({ length: 21 }, (_, i) => String(i))); goCreate(); fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test" } }); goReview(); fireEvent.click(screen.getByRole("button", { name: /Start 21 experiments/ }));
   expect(screen.getByText(/Select 1–20 originals/)).toBeInTheDocument(); expect(createExperiment).not.toHaveBeenCalled();
 });
 it("fills an editable portrait example and sends only the visible instructions", async () => {
@@ -86,25 +86,55 @@ it("describes a baseline-only setup without claiming a comparison", () => {
 it("allows concept/slide exploration but strips them when returning to controlled", () => {
   mount(); goCreate(); fireEvent.change(screen.getByLabelText("Test mode"), { target: { value: "exploration" } }); fireEvent.click(screen.getByRole("checkbox", { name: "Concept / angle" })); fireEvent.change(screen.getByLabelText("Test mode"), { target: { value: "controlled" } }); expect(screen.queryByRole("checkbox", { name: "Concept / angle" })).not.toBeInTheDocument();
 });
-it("edit mode runs the same pipeline on multiple originals: strip text, pick variables, lock constraints", async () => {
-  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({});
-  mount(["original1", "original2"], { originalSlideCounts: [3, 3] });
+it("fans out one isolated experiment per selected original so briefs never mix sources", async () => {
+  createExperiment.mockImplementation((token, input) => Promise.resolve({ experiment: { id: input.videoIds[0] } }));
+  mutateExperiment.mockResolvedValue({});
+  mount(["original1", "original2"]);
+  goCreate();
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Keep concepts separate" } });
+  goReview();
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("experiments");
+  fireEvent.click(screen.getByRole("button", { name: /Start 2 experiments/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(2));
+  expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: ["original1"], idempotencyKey: expect.any(String) }));
+  expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: ["original2"], idempotencyKey: expect.any(String) }));
+  await waitFor(() => expect(mutateExperiment).toHaveBeenCalledTimes(2));
+  expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "original1", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) }));
+  expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "original2", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) }));
+});
+it("edit mode keeps the strip-text rule on every per-original experiment", async () => {
+  createExperiment.mockImplementation((token, input) => Promise.resolve({ experiment: { id: input.videoIds[0] } }));
+  mutateExperiment.mockResolvedValue({});
+  mount(["original1", "original2"], { slideCountsByVideo: { original1: 3, original2: 3 } });
   fireEvent.click(screen.getByRole("radio", { name: /Edit slideshow/ }));
   fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-  expect(screen.getByLabelText(/^Goal/)).toBeInTheDocument();
-  expect(screen.getByLabelText("What do you want to change?")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "New copy on the same images" } });
   fireEvent.change(screen.getByLabelText("What do you want to change?"), { target: { value: "character" } });
   fireEvent.change(screen.getByLabelText("Keep unchanged (one per line)"), { target: { value: "Keep the visual style unchanged" } });
   fireEvent.click(screen.getByRole("button", { name: /Next/ }));
   expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("Same images, old overlay text stripped");
-  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
-  await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: ["original1", "original2"], variantCount: 3, slideCount: 3, instructions: expect.objectContaining({ goal: "New copy on the same images", variables: ["character"], mode: "controlled", lockedConstraints: ["Keep the visual style unchanged"], direction: expect.stringContaining("strip every existing overlay text") }) })));
-  await waitFor(() => expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "e1", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) })));
+  fireEvent.click(screen.getByRole("button", { name: /Start 2 experiments/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(2));
+  for (const id of ["original1", "original2"]) {
+    expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: [id], variantCount: 3, slideCount: 3, instructions: expect.objectContaining({ goal: "New copy on the same images", variables: ["character"], mode: "controlled", lockedConstraints: ["Keep the visual style unchanged"], direction: expect.stringContaining("strip every existing overlay text") }) }));
+    expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", id, "plan", expect.objectContaining({ allowPartial: false }));
+  }
+});
+it("keeps starting the remaining originals when one fails and explains the safe retry", async () => {
+  createExperiment.mockImplementation((token, input) => input.videoIds[0] === "original1" ? Promise.reject(new Error("boom")) : Promise.resolve({ experiment: { id: "original2" } }));
+  mutateExperiment.mockResolvedValue({});
+  mount(["original1", "original2"]);
+  goCreate();
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Partial failure" } });
+  goReview();
+  fireEvent.click(screen.getByRole("button", { name: /Start 2 experiments/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(2));
+  expect(mutateExperiment).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText(/Started 1 of 2 experiments/)).toBeInTheDocument();
 });
 it("edit mode sends no special rules when kept minimal, mirroring create", async () => {
   createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({});
-  mount(["original1"], { originalSlideCounts: [5] });
+  mount(["original1"], { slideCountsByVideo: { original1: 5 } });
   fireEvent.click(screen.getByRole("radio", { name: /Edit slideshow/ }));
   fireEvent.click(screen.getByRole("button", { name: /Next/ }));
   fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test hooks again" } });

@@ -163,14 +163,14 @@ export default function Gallery() {
 
       <FirstRunSteps />
       <div className="mt-6 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3" style={{ background: T.card, border: `1px solid ${T.line}` }}>
-        <div><p className="font-semibold text-sm">Turn patterns into experiments</p><p className="text-sm mt-1" style={{ color: T.muted }}>Select 1–20 originals below. {experimentVideoIds.length}/{SOURCE_LIMIT} selected.</p></div>
+        <div><p className="font-semibold text-sm">Turn patterns into experiments</p><p className="text-sm mt-1" style={{ color: T.muted }}>Select 1–20 originals — each becomes its own experiment. {experimentVideoIds.length}/{SOURCE_LIMIT} selected.</p></div>
         <div className="flex flex-wrap gap-3 items-center">
           {experimentVideoIds.length > 0 && <ExperimentButton onClick={() => { setSelection({ workspaceId: activeWorkspaceId, ids: [] }); setShowExperimentCreate(false); }}>Clear selection</ExperimentButton>}
           <ExperimentButton primary disabled={!experimentVideoIds.length} onClick={() => setShowExperimentCreate(true)}>Create experiment</ExperimentButton>
           <Link to="/experiments" className="text-sm underline">View experiments</Link>
         </div>
       </div>
-      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} originalSlideCounts={experimentVideoIds.map((id) => cards.find((c) => c.id === id)?.slideshowImages?.length).filter((n) => Number.isInteger(n) && n > 0)} onClose={() => setShowExperimentCreate(false)} />}
+      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} slideCountsByVideo={Object.fromEntries(experimentVideoIds.map((id) => [id, cards.find((c) => c.id === id)?.slideshowImages?.length]))} onClose={() => setShowExperimentCreate(false)} />}
 
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">

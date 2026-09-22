@@ -178,7 +178,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
   const experiments = (query.data?.pages ?? []).flatMap((p) => p.experiments ?? []).filter((e) => !e.workspaceId || e.workspaceId === workspaceId);
-  if (!experiments.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts, set a credit ceiling, and create a draft. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
+  if (!experiments.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts — each runs as its own experiment with its own briefs and variants. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
   const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
   const goalOf = (e) => e.instructions?.goal || e.title || "Untitled experiment";
   const onDelete = async () => {

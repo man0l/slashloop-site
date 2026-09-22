@@ -7,7 +7,7 @@ const valid = () => ({ workspaceId: "w1", videoIds: ["v1"], variantCount: 3, sli
 it("scopes reads with workspace, token, encoded IDs and cancellation", async () => {
   const signal = new AbortController().signal; apiFetch.mockResolvedValueOnce({ experiments: [] }).mockResolvedValueOnce({ experiment: { id: "e/1", workspaceId: "w 1" } });
   await listExperiments("auth", "w 1", signal); await getExperiment("auth", "w 1", "e/1", signal);
-  expect(apiFetch).toHaveBeenNthCalledWith(1, "/api/experiments?workspaceId=w+1", { accessToken: "auth", signal });
+  expect(apiFetch).toHaveBeenNthCalledWith(1, "/api/experiments?workspaceId=w+1&limit=12&offset=0", { accessToken: "auth", signal });
   expect(apiFetch).toHaveBeenNthCalledWith(2, "/api/experiments/e%2F1?workspaceId=w+1", { accessToken: "auth", signal });
 });
 it("refuses absent auth/workspace and foreign detail responses", async () => {
