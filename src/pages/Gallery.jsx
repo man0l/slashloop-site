@@ -170,7 +170,7 @@ export default function Gallery() {
           <Link to="/experiments" className="text-sm underline">View experiments</Link>
         </div>
       </div>
-      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} slideCountsByVideo={Object.fromEntries(experimentVideoIds.map((id) => [id, cards.find((c) => c.id === id)?.slideshowImages?.length]))} onClose={() => setShowExperimentCreate(false)} />}
+      {showExperimentCreate && experimentVideoIds.length > 0 && <ExperimentCreate key={activeWorkspaceId} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={experimentVideoIds} slideCountsByVideo={Object.fromEntries(experimentVideoIds.map((id) => { const card = cards.find((c) => c.id === id); return [id, card?.recreationImages?.length || card?.slideshowImages?.length]; }))} sourceMetaByVideo={Object.fromEntries(experimentVideoIds.map((id) => { const card = cards.find((c) => c.id === id); const recreationCount = card?.recreationImages?.length || 0; const slideshowCount = card?.slideshowImages?.length || 0; return [id, { recreationCount, slideshowCount, isSlideshow: Boolean(card?.isSlideshow) || slideshowCount > 0 }]; }))} onClose={() => setShowExperimentCreate(false)} />}
 
       <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -263,15 +263,28 @@ export default function Gallery() {
               style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
               aria-busy={dimmed}
             >
-              {cards.map((c, i) => (
+              {cards.map((c, i) => {
+                // Experiments run on slideshows: native carousels or Recreate
+                // decks (video → slideshow). Plain videos without a recreation
+                // are rejected server-side, so keep them unselectable.
+                const recreationCount = c?.recreationImages?.length || 0;
+                const slideshowCount = c?.slideshowImages?.length || 0;
+                // experimentEligible arrives from /api/gallery-data (server gate:
+                // photo post or Recreate deck); fall back to the local counts for
+                // older connector responses that lack the field.
+                const experimentEligible = c?.experimentEligible ?? (Boolean(c?.isSlideshow) || slideshowCount > 0 || recreationCount > 0);
+                const experimentDisabled = dimmed || showExperimentCreate || (!experimentVideoIds.includes(c.id) && experimentVideoIds.length >= SOURCE_LIMIT) || !experimentEligible;
+                const experimentTitle = !experimentEligible ? "Only slideshows can be selected for experiments — recreate this video as a slideshow first." : recreationCount > 0 ? `Uses the recreated slideshow (${recreationCount} slides).` : undefined;
+                return (
                 <div key={c.id} className="min-w-0">
-                  <label className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: T.card, border: `1px solid ${experimentVideoIds.includes(c.id) ? T.teal : T.line}` }}>
-                    <input type="checkbox" aria-label={`Select original ${i + 1} for experiment`} checked={experimentVideoIds.includes(c.id)} disabled={dimmed || showExperimentCreate || (!experimentVideoIds.includes(c.id) && experimentVideoIds.length >= SOURCE_LIMIT)} onChange={() => toggleExperimentVideo(c.id)} />
-                    Use original in experiment
+                  <label title={experimentTitle} className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: T.card, border: `1px solid ${experimentVideoIds.includes(c.id) ? T.teal : T.line}`, opacity: !experimentEligible ? 0.65 : 1 }}>
+                    <input type="checkbox" aria-label={`Select original ${i + 1} for experiment`} checked={experimentVideoIds.includes(c.id)} disabled={experimentDisabled} onChange={() => toggleExperimentVideo(c.id)} />
+                    {recreationCount > 0 ? `Use recreated slideshow (${recreationCount})` : "Use original in experiment"}
                   </label>
                   <GalleryCard card={c} index={i + 1} accessToken={accessToken} workspaceId={activeWorkspaceId} sources={sources} galleryCards={cards} />
                 </div>
-              ))}
+                );
+              })}
             </div>
             {cards.length >= limit && (
               <div className="mt-6 text-center">
