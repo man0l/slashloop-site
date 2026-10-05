@@ -102,7 +102,7 @@ it("fans out one isolated experiment per selected original so briefs never mix s
   expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "original1", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) }));
   expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "original2", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) }));
 });
-it("edit mode keeps the strip-text rule on every per-original experiment", async () => {
+it("character edit keeps source copy and other variables locked on every original", async () => {
   createExperiment.mockImplementation((token, input) => Promise.resolve({ experiment: { id: input.videoIds[0] } }));
   mutateExperiment.mockResolvedValue({});
   mount(["original1", "original2"], { slideCountsByVideo: { original1: 3, original2: 3 } });
@@ -112,11 +112,11 @@ it("edit mode keeps the strip-text rule on every per-original experiment", async
   fireEvent.change(screen.getByLabelText("What do you want to change?"), { target: { value: "character" } });
   fireEvent.change(screen.getByLabelText("Keep unchanged (one per line)"), { target: { value: "Keep the visual style unchanged" } });
   fireEvent.click(screen.getByRole("button", { name: /Next/ }));
-  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("Same images, old overlay text stripped");
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("Selected variables change; everything else stays locked");
   fireEvent.click(screen.getByRole("button", { name: /Start 2 experiments/ }));
   await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(2));
   for (const id of ["original1", "original2"]) {
-    expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: [id], variantCount: 3, slideCount: 3, instructions: expect.objectContaining({ goal: "New copy on the same images", variables: ["character"], mode: "controlled", lockedConstraints: ["Keep the visual style unchanged"], direction: expect.stringContaining("strip every existing overlay text") }) }));
+    expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: [id], variantCount: 3, slideCount: 3, instructions: expect.objectContaining({ goal: "New copy on the same images", variables: ["character"], mode: "controlled", lockedConstraints: ["Keep the visual style unchanged"], direction: expect.stringContaining("Keep the original overlay text unchanged.") }) }));
     expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", id, "plan", expect.objectContaining({ allowPartial: false }));
   }
 });
@@ -140,7 +140,7 @@ it("edit mode sends no special rules when kept minimal, mirroring create", async
   fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test hooks again" } });
   fireEvent.click(screen.getByRole("button", { name: /Next/ }));
   fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
-  await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: ["original1"], variantCount: 3, instructions: expect.objectContaining({ variables: ["hook"], lockedConstraints: [], mode: "controlled", direction: expect.stringContaining("strip every existing overlay text") }) })));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ videoIds: ["original1"], variantCount: 3, instructions: expect.objectContaining({ variables: ["hook"], lockedConstraints: [], mode: "controlled", direction: expect.stringContaining("Replace overlay text only as required by the selected variables.") }) })));
 });
 it("offers supporting overlays for hook tests and sends the flag when checked", async () => {
   createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
@@ -162,4 +162,29 @@ it("sends slide-1-hook-only by default and hides the option for non-hook variabl
   goReview();
   fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
   await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ instructions: expect.objectContaining({ variables: ["visualStyle"], varySupportingOverlays: false }) })));
+});
+
+it.each(["create", "edit"])("%s mode sends multiple exploration variables and their values without collapsing to one", async (mode) => {
+  createExperiment.mockResolvedValue({ experiment: { id: "combo" } }); mutateExperiment.mockResolvedValue({}); mount();
+  if (mode === "edit") fireEvent.click(screen.getByRole("radio", { name: /Edit slideshow/ }));
+  goCreate();
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Compare hook and casting combinations" } });
+  fireEvent.change(screen.getByLabelText("Test mode"), { target: { value: "exploration" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "Character" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Visual style" }));
+  fireEvent.change(screen.getByLabelText("Desired variable values (optional)"), { target: { value: "Hook: question; character: short blond hair; style: warm photograph" } });
+  goReview();
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("Combined changes");
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(1));
+  const input = createExperiment.mock.calls[0][1];
+  expect(input.instructions).toMatchObject({ mode: "exploration", variables: ["hook", "character", "visualStyle"], varySupportingOverlays: false });
+  expect(input.instructions.direction).toContain("Desired variable values: Hook: question; character: short blond hair; style: warm photograph");
+  expect(input.instructions.direction).not.toContain("keep the images themselves unchanged");
+  if (mode === "edit") {
+    expect(input.instructions.direction).toContain("Change only the selected variables: hook, character, visualStyle.");
+    expect(input.instructions.direction).toContain("Keep the same setting, composition and story order.");
+    expect(input.instructions.direction).not.toContain("Keep the same character.");
+    expect(input.instructions.direction).not.toContain("Keep the same visual style.");
+  }
 });
