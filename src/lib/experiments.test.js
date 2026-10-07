@@ -10,6 +10,10 @@ it("scopes reads with workspace, token, encoded IDs and cancellation", async () 
   expect(apiFetch).toHaveBeenNthCalledWith(1, "/api/experiments?workspaceId=w+1&limit=12&offset=0", { accessToken: "auth", signal });
   expect(apiFetch).toHaveBeenNthCalledWith(2, "/api/experiments/e%2F1?workspaceId=w+1", { accessToken: "auth", signal });
 });
+it("sends ran_by only when filtering, URL-encoded", async () => {
+  apiFetch.mockClear(); apiFetch.mockResolvedValue({ experiments: [], nextOffset: null }); await listExperiments("auth", "w1", undefined, { ranBy: "agent:Leo on behalf of man0l", offset: 12 });
+  expect(apiFetch).toHaveBeenCalledWith("/api/experiments?workspaceId=w1&limit=12&offset=12&ran_by=agent%3ALeo+on+behalf+of+man0l", { accessToken: "auth", signal: undefined });
+});
 it("refuses absent auth/workspace and foreign detail responses", async () => {
   await expect(listExperiments(null, "w1")).rejects.toThrow("Not signed in"); await expect(listExperiments("auth", null)).rejects.toThrow("workspace"); expect(apiFetch).not.toHaveBeenCalled();
   apiFetch.mockResolvedValue({ experiment: { workspaceId: "foreign" } }); await expect(getExperiment("auth", "w1", "e1")).rejects.toThrow("not found");
