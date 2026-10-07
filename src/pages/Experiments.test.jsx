@@ -255,3 +255,35 @@ it("resends the same key after a lost mutation response", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Recheck original request" }));
   await waitFor(() => expect(api.mutateExperiment).toHaveBeenCalledTimes(2)); expect(api.mutateExperiment.mock.calls[0][4]).toEqual(api.mutateExperiment.mock.calls[1][4]);
 });
+const RUNNER = "agent:Leo on behalf of man0l";
+const listRow = (id, ranBy) => ({ id, workspaceId: "w1", status: "completed", instructions: { goal: `Goal ${id}` }, variantCount: 1, slideCount: 3, creditsCharged: 1, maxCredits: 10, createdAt: new Date().toISOString(), variants: [], ranBy });
+const listState = (experiments) => ({ data: { pages: [{ experiments, nextOffset: null }] }, isPending: false, isError: false, refetch: vi.fn(), hasNextPage: false, isFetchingNextPage: false, fetchNextPage: vi.fn() });
+const renderList = (path = "/experiments") => { client = new QueryClient(); return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><ExperimentList accessToken="token" workspaceId="w1" /></MemoryRouter></QueryClientProvider>); };
+it.each(["grid", "line"])("ran_by chip in the %s view filters the list and can be cleared", async (view) => {
+  localStorage.setItem("experiments-view", view);
+  useExperimentList.mockReturnValue(listState([listRow("r1", RUNNER), listRow("r2", null)]));
+  renderList();
+  expect(await screen.findByText("Goal r1")).toBeInTheDocument();
+  expect(screen.getByText("Ran by: unknown")).toBeInTheDocument();
+  expect(useExperimentList).toHaveBeenLastCalledWith(expect.objectContaining({ ranBy: undefined }));
+  fireEvent.click(screen.getByRole("button", { name: `Show all experiments run by ${RUNNER}` }));
+  await waitFor(() => expect(useExperimentList).toHaveBeenLastCalledWith(expect.objectContaining({ ranBy: RUNNER })));
+  expect(screen.getByText(/Showing experiments run by/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+  await waitFor(() => expect(useExperimentList).toHaveBeenLastCalledWith(expect.objectContaining({ ranBy: undefined })));
+  expect(screen.queryByText(/Showing experiments run by/)).not.toBeInTheDocument();
+});
+it("reads the ran_by filter from the URL and explains an empty filtered result", async () => {
+  useExperimentList.mockReturnValue(listState([]));
+  renderList(`/experiments?ran_by=${encodeURIComponent(RUNNER)}`);
+  expect(useExperimentList).toHaveBeenLastCalledWith(expect.objectContaining({ ranBy: RUNNER }));
+  expect(await screen.findByText(/No experiments run by/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Clear filter" })).toBeInTheDocument();
+});
+it("detail header shows ran_by as a link to the filtered list, and unknown when null", async () => {
+  experiment = { ...base(), ranBy: RUNNER }; mount();
+  const link = await screen.findByRole("link", { name: `Show all experiments run by ${RUNNER}` });
+  expect(link.getAttribute("href")).toBe(`/experiments?ran_by=${encodeURIComponent(RUNNER)}`);
+  cleanup(); experiment = { ...base(), ranBy: null }; mount();
+  expect(await screen.findByText("Ran by: unknown")).toBeInTheDocument();
+});

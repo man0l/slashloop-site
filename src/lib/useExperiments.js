@@ -3,12 +3,12 @@ import { listExperiments, getExperiment, isExperimentActive, experimentPollInter
 
 // Token is part of the cache identity: no cross-account cached experiment data.
 export const experimentKey = (accessToken, workspaceId, id) => ["experiments", accessToken, workspaceId, ...(id ? [id] : [])];
-export function useExperimentList({ accessToken, workspaceId }) {
+export function useExperimentList({ accessToken, workspaceId, ranBy }) {
   return useInfiniteQuery({
     // "list" keeps the infinite cache distinct from a detail row whose id
     // happens to collide; the base experimentKey still invalidates it.
-    queryKey: [...experimentKey(accessToken, workspaceId), "list"],
-    queryFn: ({ signal, pageParam }) => listExperiments(accessToken, workspaceId, signal, { offset: pageParam ?? 0 }),
+    queryKey: [...experimentKey(accessToken, workspaceId), "list", ranBy ?? null],
+    queryFn: ({ signal, pageParam }) => listExperiments(accessToken, workspaceId, signal, { offset: pageParam ?? 0, ranBy }),
     initialPageParam: 0,
     getNextPageParam: (last) => last.nextOffset ?? undefined,
     enabled: Boolean(accessToken && workspaceId),

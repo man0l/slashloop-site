@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { T, fD } from "../lib/theme.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -25,6 +25,20 @@ function Status({ status }) {
   return <span className="rounded-full px-3 py-1 text-xs font-medium inline-flex items-center gap-1.5" style={{ background: T.paper, color: isExperimentActive({ status }) ? T.teal : T.ink }}>{icon && <span aria-hidden="true">{icon}</span>}{s}</span>;
 }
 function Chip({ children, tone, title }) { return <span title={title} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: T.paper, color: tone || T.muted }}>{children}</span>; }
+const ranByHref = (value) => `/experiments?ran_by=${encodeURIComponent(value)}`;
+// Who ran it ("user" or "agent:<name> on behalf of <user>"); a click filters the list to that exact value.
+function RanBy({ value, onFilter }) {
+  if (!value) return <span className="text-xs" style={{ color: T.muted }}>Ran by: unknown</span>;
+  const style = { background: T.paper, color: T.ink, border: `1px solid ${T.line}` };
+  const cls = "rounded-full px-2.5 py-1 text-xs font-medium max-w-full truncate hover:underline";
+  const label = `Show all experiments run by ${value}`;
+  // Cards are themselves links, so there the chip is a button (same pattern as their delete button).
+  return <span className="inline-flex items-center gap-1.5 text-xs min-w-0 max-w-full" style={{ color: T.muted }}>Ran by:
+    {onFilter
+      ? <button type="button" title={label} aria-label={label} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); onFilter(value); }} className={cls} style={style}>{value}</button>
+      : <Link to={ranByHref(value)} title={label} aria-label={label} className={cls} style={style}>{value}</Link>}
+  </span>;
+}
 const STAGE_COLOR = { done: T.teal, failed: "#9B2C23", active: T.teal, pending: T.muted };
 function Stage({ label, note, state, onRetry, busy }) {
   const color = STAGE_COLOR[state] || T.muted;
@@ -166,7 +180,10 @@ export default function Experiments() {
 
 const VIEW_KEY = "experiments-view";
 export function ExperimentList({ accessToken, workspaceId }) {
-  const query = useExperimentList({ accessToken, workspaceId });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const ranBy = searchParams.get("ran_by")?.trim() || undefined;
+  const query = useExperimentList({ accessToken, workspaceId, ranBy });
+  const filterByRanBy = (value) => setSearchParams(value ? { ran_by: value } : {});
   const qc = useQueryClient();
   const [deleting, setDeleting] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -178,6 +195,8 @@ export function ExperimentList({ accessToken, workspaceId }) {
   if (query.isPending) return <p role="status">Loading experiments…</p>;
   if (query.isError) return <div role="alert">{query.error.message} <ExperimentButton onClick={() => query.refetch()}>Refresh list</ExperimentButton></div>;
   const experiments = (query.data?.pages ?? []).flatMap((p) => p.experiments ?? []).filter((e) => !e.workspaceId || e.workspaceId === workspaceId);
+  const filterBar = ranBy && <div className="flex flex-wrap items-center gap-2 mb-3 text-sm" style={{ color: T.muted }}>Showing experiments run by <Chip tone={T.ink}>{ranBy}</Chip><button type="button" onClick={() => filterByRanBy("")} className="underline text-xs">Clear filter</button></div>;
+  if (!experiments.length && ranBy) return <div>{filterBar}<p role="status" className="text-sm" style={{ color: T.muted }}>No experiments run by “{ranBy}” in this workspace.</p></div>;
   if (!experiments.length) return <div className="rounded-xl p-8" style={panel}><h2 style={{ ...fD, fontWeight: 800, fontSize: 22 }}>Your first experiment starts in Gallery</h2><p className="mt-2 text-sm" style={{ color: T.muted }}>Select up to 20 original posts — each runs as its own experiment with its own briefs and variants. Nothing runs until you approve its estimate.</p><Link to="/gallery" className="inline-block mt-4 text-sm underline">Choose originals</Link></div>;
   const thumbsOf = (e) => (e.variants ?? []).flatMap((v) => v.slides ?? []).filter((s) => s.url).slice(0, 3).map((s) => s.url);
   const goalOf = (e) => e.instructions?.goal || e.title || "Untitled experiment";
@@ -206,6 +225,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
   }
   const selectBox = (e) => <input type="checkbox" aria-label={`Select ${goalOf(e)}`} checked={selectedIds.includes(e.id)} onChange={() => toggleSelect(e.id)} className="w-4 h-4 cursor-pointer" />;
   return <div>
+    {filterBar}
     <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
       <div role="group" aria-label="View" className="inline-flex rounded-lg overflow-hidden" style={{ border: `1px solid ${T.line}` }}>
         {[["grid", "Grid"], ["line", "Line"]].map(([v, label]) => <button key={v} type="button" aria-pressed={view === v} onClick={() => switchView(v)} className="px-3.5 py-1.5 text-xs font-semibold" style={view === v ? { background: T.ink, color: "white" } : { background: T.card, color: T.muted }}>{label}</button>)}
@@ -229,6 +249,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
           <h2 className="text-sm font-bold leading-snug line-clamp-2 min-h-[2.5em]" style={{ ...fD, fontSize: 15 }}>{goalOf(e)}</h2>
           <div className="flex items-center justify-between gap-2"><Status status={e.status} /><span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span></div>
           <p className="text-xs m-0" title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined} style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · {e.createdAt ? timeAgo(e.createdAt) : ""}</p>
+          <p className="m-0"><RanBy value={e.ranBy} onFilter={filterByRanBy} /></p>
         </div>
       </Link>;
     })}</div> : <ul className="rounded-xl overflow-hidden" style={panel}>
@@ -238,6 +259,7 @@ export function ExperimentList({ accessToken, workspaceId }) {
           <span className="shrink-0" onClick={(ev) => ev.stopPropagation()}>{selectBox(e)}</span>
           {thumbs[0] ? <img src={thumbs[0]} alt="" loading="lazy" className="rounded object-cover shrink-0" style={{ width: 34, height: 56, border: `1px solid ${T.line}` }} /> : <span aria-hidden="true" className="rounded shrink-0 inline-flex items-center justify-center text-lg" style={{ width: 34, height: 56, background: T.paper, color: T.line, border: `1px solid ${T.line}` }}>▨</span>}
           <Link to={`/experiments/${encodeURIComponent(e.id)}`} className="min-w-0 flex-1"><span className="block text-sm font-bold truncate" style={{ ...fD, fontSize: 14 }}>{goalOf(e)}</span><span className="block text-xs" style={{ color: T.muted }}>{e.creditsCharged ?? 0}/{e.maxCredits ?? "—"} credits · <span title={e.createdAt ? new Date(e.createdAt).toLocaleString() : undefined}>{e.createdAt ? timeAgo(e.createdAt) : ""}</span></span></Link>
+          <span className="min-w-0 max-w-[16rem]"><RanBy value={e.ranBy} onFilter={filterByRanBy} /></span>
           <span className="text-xs whitespace-nowrap" style={{ color: T.muted }}>{e.variantCount ?? e.variants?.length ?? 0}×{e.slideCount ?? "?"}</span>
           <Status status={e.status} />
           <button type="button" aria-label={`Delete ${goalOf(e)}`} title="Delete" disabled={deleting === e.id} onClick={() => setPendingDelete(e)} className="rounded-full w-6 h-6 text-xs font-bold leading-none shrink-0" style={{ background: T.paper, color: "#9B2C23", border: `1px solid ${T.line}` }}>✕</button>
@@ -380,7 +402,7 @@ export function ExperimentDetail({ accessToken, workspaceId, experimentId }) {
     <Link to="/experiments" className="text-sm underline">All experiments</Link>
     <section className="rounded-xl p-5 sm:p-6 space-y-4" style={panel}>
       <div className="flex flex-wrap justify-between gap-3"><h2 style={{ ...fD, fontSize: 26, fontWeight: 800 }}>{experiment.instructions?.goal || "Experiment"}</h2><Status status={experiment.status} /></div>
-      <div className="flex flex-wrap gap-2"><Chip>{experiment.instructions?.mode === "exploration" ? "Exploration" : "One-variable test"}</Chip><Chip>{experiment.variantCount} variants × {experiment.slideCount} slides</Chip><Chip>{experiment.creditsCharged ?? 0}/{experiment.maxCredits} credits used</Chip><Chip>Manual publishing</Chip>{experiment.createdAt && <Chip title={new Date(experiment.createdAt).toLocaleString()}>started {timeAgo(experiment.createdAt)}</Chip>}</div>
+      <div className="flex flex-wrap gap-2"><Chip>{experiment.instructions?.mode === "exploration" ? "Exploration" : "One-variable test"}</Chip><Chip>{experiment.variantCount} variants × {experiment.slideCount} slides</Chip><Chip>{experiment.creditsCharged ?? 0}/{experiment.maxCredits} credits used</Chip><Chip>Manual publishing</Chip><RanBy value={experiment.ranBy} />{experiment.createdAt && <Chip title={new Date(experiment.createdAt).toLocaleString()}>started {timeAgo(experiment.createdAt)}</Chip>}</div>
       <Pipeline experiment={experiment} completedInputs={completedInputs} busy={busy} onRetryJob={canRetryJobs ? retryJob : undefined} onRetryStage={canRetryStage ? retryStage : undefined} />
       <details><summary className="text-sm cursor-pointer">Your saved inputs & rules</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{Object.entries(experiment.instructions ?? {}).map(([key, value]) => <div key={key}><dt className="font-semibold">{({ goal: "Goal", brand: "Brand", audience: "Audience", language: "Language", direction: "Creative direction", lockedConstraints: "Keep unchanged", mode: "Test mode", variables: "What may change", varySupportingOverlays: "Hook scope" })[key] || key}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{key === "mode" ? value === "controlled" ? "Change one thing at a time" : "Explore combinations" : key === "variables" ? value.map((v) => ({ visualStyle: "Visual style", cta: "Call to action" })[v] || v).join(", ") : key === "varySupportingOverlays" ? value ? "Hook + supporting overlays (slides 2–7)" : "Slide 1 hook only" : Array.isArray(value) ? value.join("\n") : displayValue(value) || "Not specified"}</dd></div>)}</dl></details>
       <div className="flex flex-wrap gap-2"><ExperimentButton onClick={() => query.refetch()} disabled={busy || query.isFetching}>Refresh status</ExperimentButton>{active && <ExperimentButton disabled={busy} onClick={() => dispatch({ action: "cancel", payload: {}, idempotencyKey: stableKey("cancel", {}) })}>Cancel queued work</ExperimentButton>}{!active && <ExperimentButton disabled={busy || deleting} onClick={() => setConfirmDelete(true)}>{deleting ? "Deleting…" : "Delete"}</ExperimentButton>}</div>

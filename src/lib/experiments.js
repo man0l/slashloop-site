@@ -104,9 +104,11 @@ function requireScope(accessToken, workspaceId) {
   if (!workspaceId) throw new Error("Choose a workspace.");
 }
 const pathFor = (id) => `/api/experiments/${encodeURIComponent(id)}`;
-export async function listExperiments(accessToken, workspaceId, signal, { limit = 12, offset = 0 } = {}) {
+export async function listExperiments(accessToken, workspaceId, signal, { limit = 12, offset = 0, ranBy } = {}) {
   requireScope(accessToken, workspaceId);
-  const result = await apiFetch(`/api/experiments?${new URLSearchParams({ workspaceId, limit: String(limit), offset: String(offset) })}`, { accessToken, signal });
+  const params = new URLSearchParams({ workspaceId, limit: String(limit), offset: String(offset) });
+  if (ranBy) params.set("ran_by", ranBy);
+  const result = await apiFetch(`/api/experiments?${params}`, { accessToken, signal });
   return { experiments: result.experiments ?? [], nextOffset: result.nextOffset ?? null };
 }
 export async function getExperiment(accessToken, workspaceId, id, signal) {
