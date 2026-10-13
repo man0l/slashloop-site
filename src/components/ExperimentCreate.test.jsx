@@ -232,7 +232,22 @@ it("starts from a brief with no videoIds and sends mode brief, the real slide co
   const [, input] = createExperiment.mock.calls[0];
   expect(input).toMatchObject({ mode: "brief", workspaceId: "w1", variantCount: 2, slideCount: 6, maxCredits: expect.any(Number), idempotencyKey: expect.any(String), instructions: expect.objectContaining({ goal: "Test a hook with no source", direction }) });
   expect(input).not.toHaveProperty("videoIds");
+  expect(input.instructions.lockedConstraints).toEqual([]);
   await waitFor(() => expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "e1", "plan", expect.objectContaining({ allowPartial: false })));
+});
+// SLA-804: the brief is the whole spec — source-only fields are not shown.
+it("hides keep-unchanged and desired-values fields in brief mode, keeps the test controls", () => {
+  mount([], { initialMode: "brief" });
+  expect(screen.queryByLabelText("Keep unchanged (one per line)")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Desired variable values (optional)")).not.toBeInTheDocument();
+  expect(screen.queryByText("Start from an example")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Test mode")).toBeInTheDocument();
+  expect(screen.getByLabelText("What do you want to change?")).toBeInTheDocument();
+  expect(screen.getByLabelText(/Draw overlay text with code/)).toBeInTheDocument();
+  cleanup(); client.clear();
+  mount(["original1"], { initialMode: "create" });
+  expect(screen.getByLabelText("Keep unchanged (one per line)")).toBeInTheDocument();
+  expect(screen.getByLabelText("Desired variable values (optional)")).toBeInTheDocument();
 });
 it("requires a creative direction in brief mode and does not call the API without one", () => {
   mount([], { initialMode: "brief" });
