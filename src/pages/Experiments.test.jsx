@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, cleanup, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -286,4 +286,35 @@ it("detail header shows ran_by as a link to the filtered list, and unknown when 
   expect(link.getAttribute("href")).toBe(`/experiments?ran_by=${encodeURIComponent(RUNNER)}`);
   cleanup(); experiment = { ...base(), ranBy: null }; mount();
   expect(await screen.findByText("Ran by: unknown")).toBeInTheDocument();
+});
+const qaFailed = () => {
+  experiment.status = "failed";
+  experiment.pipeline = "contract";
+  experiment.error = "qa_failed: slide 2: the caption must be exactly \"two\" (seen: \"\")";
+  experiment.variants[0] = { ...experiment.variants[0], status: "failed", error: experiment.error, qaDeck: { verdict: "failed", attempts: 2, failures: { 1: ["caption"] } }, slides: [0, 1, 2].map((index) => ({ index, status: "done", url: `https://example.test/${index}.jpg` })) };
+};
+it("SLA-811: a QA-failed experiment offers a revised-brief retry that is estimated, approved, then sent as revise", async () => {
+  qaFailed();
+  api.estimateExperiment.mockResolvedValue({ analysisCredits: 0, planningCredits: 2, generationCredits: 30, totalCredits: 32, remainingCredits: 80, workspaceCredits: 200 });
+  mount();
+  expect(await screen.findByText("This experiment failed the quality check")).toBeInTheDocument();
+  expect(within(screen.getByRole("region", { name: "Retry with a revised brief" })).getByText(/the caption must be exactly/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Estimate retry with revised brief/ }));
+  const approve = await screen.findByRole("button", { name: "Approve & start revised retry" });
+  expect(api.estimateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "revise", undefined, expect.any(AbortSignal), undefined);
+  expect(api.mutateExperiment).not.toHaveBeenCalled();
+  expect(screen.getByText(/brief rewrite \+ regeneration \+ QA/)).toBeInTheDocument();
+  fireEvent.click(approve);
+  await waitFor(() => expect(api.mutateExperiment).toHaveBeenCalledWith("token", "w1", "e1", "revise", { idempotencyKey: expect.any(String) }));
+});
+it("SLA-811: no revise offer unless a variant failed QA, and none once the revision limit is used", async () => {
+  experiment.status = "failed"; experiment.pipeline = "contract"; experiment.error = "provider_result_rejected";
+  mount();
+  await screen.findByText("Question hook");
+  expect(screen.queryByText("This experiment failed the quality check")).not.toBeInTheDocument();
+  cleanup(); client?.clear();
+  qaFailed(); experiment.revisions = [{}, {}];
+  mount();
+  expect(await screen.findByText(/already revised 2 times/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Estimate retry with revised brief/ })).not.toBeInTheDocument();
 });

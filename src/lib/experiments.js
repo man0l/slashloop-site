@@ -137,7 +137,7 @@ export async function estimateExperiment(accessToken, workspaceId, id, stage, va
 }
 export function mutateExperiment(accessToken, workspaceId, id, action, input = {}) {
   requireScope(accessToken, workspaceId);
-  if (!["plan", "generate", "cancel", "retry", "feedback"].includes(action)) throw new Error("Unsupported experiment action.");
+  if (!["plan", "generate", "cancel", "retry", "revise", "feedback"].includes(action)) throw new Error("Unsupported experiment action.");
   if (!input.idempotencyKey) throw new Error("An idempotency key is required.");
   return apiFetch(`${pathFor(id)}/${action}`, { method: "POST", accessToken, body: { ...input, workspaceId } });
 }
