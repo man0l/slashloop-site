@@ -6,7 +6,7 @@ import { useAuth } from "../lib/auth.jsx";
 import { useWorkspace } from "../lib/workspace.jsx";
 import { SectionLabel, Spinner, ConfirmDialog } from "../components/ui.jsx";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher.jsx";
-import { ExperimentButton } from "../components/ExperimentCreate.jsx";
+import ExperimentCreate, { ExperimentButton } from "../components/ExperimentCreate.jsx";
 import ExperimentVariant from "../components/ExperimentVariant.jsx";
 import { experimentKey, useExperimentDetail, useExperimentList } from "../lib/useExperiments.js";
 import { errorText, explainExperimentError, deleteExperiment, deleteExperiments, estimateBlockReason,
@@ -168,12 +168,14 @@ export default function Experiments() {
   const { user, loading, accessToken } = useAuth();
   const { activeWorkspaceId } = useWorkspace();
   const { experimentId } = useParams();
+  const [briefOpen, setBriefOpen] = useState(false);
   if (loading) return <div className="py-24 text-center"><Spinner /></div>;
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(experimentId ? `/experiments/${experimentId}` : "/experiments")}`} replace />;
   return <main className="max-w-6xl mx-auto px-5 py-12 min-h-[70vh]">
     <SectionLabel>EXPERIMENTS</SectionLabel>
-    <div className="mt-3 flex flex-wrap items-start justify-between gap-4"><div><h1 style={{ ...fD, fontSize: 32, fontWeight: 900, letterSpacing: -0.8 }}>From evidence to variants</h1></div><Link to="/gallery" className="rounded-lg px-4 py-2 text-sm font-semibold" style={{ background: T.signal, color: "white" }}>Select Gallery originals</Link></div>
+    <div className="mt-3 flex flex-wrap items-start justify-between gap-4"><div><h1 style={{ ...fD, fontSize: 32, fontWeight: 900, letterSpacing: -0.8 }}>From evidence to variants</h1></div><div className="flex flex-wrap items-center gap-2">{activeWorkspaceId && !experimentId && <ExperimentButton onClick={() => setBriefOpen(true)} disabled={briefOpen}>New experiment from a brief — no source video</ExperimentButton>}<Link to="/gallery" className="rounded-lg px-4 py-2 text-sm font-semibold" style={{ background: T.signal, color: "white" }}>Select Gallery originals</Link></div></div>
     <div className="my-6"><WorkspaceSwitcher /></div>
+    {briefOpen && activeWorkspaceId && !experimentId && <ExperimentCreate key={`brief:${activeWorkspaceId}`} accessToken={accessToken} workspaceId={activeWorkspaceId} videoIds={[]} initialMode="brief" onClose={() => setBriefOpen(false)} />}
     {!activeWorkspaceId ? <p className="text-sm" style={{ color: T.muted }}>Choose or create a workspace to view experiments.</p> : experimentId ? <ExperimentDetail key={`${accessToken}:${activeWorkspaceId}:${experimentId}`} accessToken={accessToken} workspaceId={activeWorkspaceId} experimentId={experimentId} /> : <ExperimentList key={`${accessToken}:${activeWorkspaceId}`} accessToken={accessToken} workspaceId={activeWorkspaceId} />}
   </main>;
 }

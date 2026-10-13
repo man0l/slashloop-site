@@ -213,3 +213,42 @@ it.each(["create", "edit"])("%s mode sends multiple exploration variables and th
     expect(input.instructions.direction).not.toContain("Keep the same visual style.");
   }
 });
+
+// SLA-802: third source choice — a brief with no source video.
+it("starts from a brief with no videoIds and sends mode brief, the real slide count and a long direction", async () => {
+  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({});
+  mount([], { initialMode: "brief" });
+  expect(screen.getByRole("heading", { name: "Create an experiment from a brief" })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test a hook with no source" } });
+  const direction = "Slide 1: kitchen counter, overlay “Stop scrolling”. ".repeat(60);
+  expect(direction.length).toBeGreaterThan(2000);
+  fireEvent.change(screen.getByLabelText(/^Creative direction/), { target: { value: direction } });
+  fireEvent.change(screen.getByLabelText("Slides per variant (3–8)"), { target: { value: "6" } });
+  fireEvent.change(screen.getByLabelText("Variants (baseline included)"), { target: { value: "2" } });
+  goReview();
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("12");
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(1));
+  const [, input] = createExperiment.mock.calls[0];
+  expect(input).toMatchObject({ mode: "brief", workspaceId: "w1", variantCount: 2, slideCount: 6, maxCredits: expect.any(Number), idempotencyKey: expect.any(String), instructions: expect.objectContaining({ goal: "Test a hook with no source", direction }) });
+  expect(input).not.toHaveProperty("videoIds");
+  await waitFor(() => expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "e1", "plan", expect.objectContaining({ allowPartial: false })));
+});
+it("requires a creative direction in brief mode and does not call the API without one", () => {
+  mount([], { initialMode: "brief" });
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test" } });
+  expect(screen.getAllByText(/Creative direction is required/).length).toBeGreaterThan(0);
+  goReview();
+  expect(screen.getByRole("button", { name: /Start experiment/ })).toBeDisabled();
+  expect(createExperiment).not.toHaveBeenCalled();
+});
+it("offers the brief choice on step 1 and disables the source-based choices when nothing is selected", () => {
+  mount([]);
+  expect(screen.getByRole("radio", { name: /Start from a brief/ })).toBeChecked();
+  expect(screen.getByRole("radio", { name: /Edit slideshow/ })).toBeDisabled();
+  expect(screen.getByRole("radio", { name: /Create variations/ })).toBeDisabled();
+  cleanup(); client.clear();
+  mount(["original1"]);
+  expect(screen.getByRole("radio", { name: /Create variations/ })).toBeChecked();
+  expect(screen.getByRole("radio", { name: /Start from a brief/ })).toBeEnabled();
+});

@@ -66,3 +66,12 @@ it("explains job causes with what happened and what to do", () => {
   expect(explainExperimentError("something entirely novel")).toBe(null);
   expect(explainExperimentError("")).toBe(null);
 });
+it("validates a brief-only experiment: no videoIds, a direction, the usual bounds (SLA-802)", () => {
+  const { videoIds, ...rest } = valid();
+  const brief = { ...rest, mode: "brief", instructions: { ...valid().instructions, direction: "Slide 1: overlay “Stop scrolling”" } };
+  expect(validateExperiment(brief)).toBe("");
+  expect(validateExperiment({ ...brief, videoIds: ["v1"] })).not.toBe("");
+  expect(validateExperiment({ ...brief, instructions: { ...brief.instructions, direction: "  " } })).toMatch(/creative direction/i);
+  expect(validateExperiment({ ...brief, slideCount: 9 })).not.toBe("");
+  expect(validateExperiment({ ...rest, instructions: valid().instructions })).not.toBe("");
+});
