@@ -86,3 +86,7 @@ it("builds the feedback request and the feedback estimate/action bodies (SLA-797
   await mutateExperiment("t", "w", "e", "feedback", { ...body, idempotencyKey: "k" });
   expect(apiFetch).toHaveBeenLastCalledWith("/api/experiments/e/feedback", expect.objectContaining({ method: "POST", body: { ...body, idempotencyKey: "k", workspaceId: "w" } }));
 });
+
+it("SLA-811: revise is an allowed experiment action and needs an idempotency key", () => {
+  expect(() => mutateExperiment("token", "w1", "e1", "revise", {})).toThrow(/idempotency/i);
+});
