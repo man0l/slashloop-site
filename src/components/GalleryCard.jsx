@@ -114,6 +114,8 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   // "Schedule" — push the recreated deck straight into the post scheduler
   // (src/calendar drawer, prefilled with the caption + recreation image URLs).
   const [scheduling, setScheduling] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef(null);
   const { showToast } = useToast();
   const socialAdapter = useMemo(() => createApiAdapter(accessToken), [accessToken]);
 
@@ -142,7 +144,10 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
   // is genuinely no video or slideshow to play; once media appears the icon falls away.
   const scrapeError = card.fetchError && !mediaUrl && slideshowImages.length === 0 ? card.fetchError : null;
 
-  useEffect(() => () => { if (recreateTimer.current) clearInterval(recreateTimer.current); }, []);
+  useEffect(() => () => {
+    if (recreateTimer.current) clearInterval(recreateTimer.current);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
 
   async function startRecreate() {
     if (recreating) return;
@@ -203,6 +208,35 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
     }
   }
 
+  // "Copy ID" — the raw video id the slashloop MCP tools take (get-video,
+  // create-experiment, …), so it can be pasted into an agent chat.
+  async function copyId() {
+    const id = String(card.id);
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(id);
+      ok = true;
+    } catch {
+      // Clipboard API blocked (insecure context / permissions) — legacy path.
+      const ta = document.createElement("textarea");
+      ta.value = id;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand("copy"); } catch { ok = false; }
+      ta.remove();
+    }
+    if (!ok) {
+      window.prompt("Copy this video ID:", id);
+      return;
+    }
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+  }
+
   async function downloadZip() {
     if (zipState === "zipping" || carouselImages.length === 0) return;
     setZipState("zipping");
@@ -227,15 +261,27 @@ export default function GalleryCard({ card, index, accessToken, workspaceId, sou
       onMouseEnter={hydrate}
       onFocus={hydrate}
     >
-      {index != null && (
-        <span
-          className="absolute top-2 left-2 z-10 flex items-center justify-center rounded-full"
-          style={{ ...fM, fontSize: 11, fontWeight: 700, width: 22, height: 22, background: "rgba(20,24,29,0.75)", color: "#fff" }}
-          title={`Video #${index} — reference this as "video ${index}"`}
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-1">
+        {index != null && (
+          <span
+            className="flex items-center justify-center rounded-full"
+            style={{ ...fM, fontSize: 11, fontWeight: 700, width: 22, height: 22, background: "rgba(20,24,29,0.75)", color: "#fff" }}
+            title={`Video #${index} — reference this as "video ${index}"`}
+          >
+            {index}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={copyId}
+          title={`Copy video ID ${card.id}`}
+          aria-label={`Copy ID of video ${card.id}`}
+          className="flex items-center rounded-full px-2 transition-colors hover:bg-black/90"
+          style={{ ...fM, fontSize: 11, fontWeight: 600, height: 22, background: "rgba(20,24,29,0.75)", color: "#fff", whiteSpace: "nowrap" }}
         >
-          {index}
-        </span>
-      )}
+          {copied ? "Copied" : "Copy ID"}
+        </button>
+      </div>
 
       {/* Media stage — never covered by a curtain. Videos show the stored
           player, slideshows the carousel, everything else the cover thumb;
