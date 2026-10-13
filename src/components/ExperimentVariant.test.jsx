@@ -69,3 +69,29 @@ it("shows the feedback history and marks slides carrying feedback", () => {
   expect(screen.getByText("Your feedback applied")).toBeInTheDocument();
   expect(screen.getByText(/regenerated slide 2/)).toBeInTheDocument();
 });
+it("previews slides in an in-page slideshow instead of a new tab (SLA-808)", () => {
+  const v = makeVariant(); v.slides[2] = { index: 2, status: "generating" };
+  mount(v);
+  expect(screen.queryByRole("link", { name: /Open slide/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Preview slide 2" }));
+  const dialog = screen.getByRole("dialog", { name: "Portrait preview" });
+  expect(dialog).toHaveTextContent("Slide 2 · 2 of 2");
+  expect(screen.getByRole("button", { name: "Next slide" })).toBeDisabled();
+  fireEvent.keyDown(document, { key: "ArrowLeft" });
+  expect(dialog).toHaveTextContent("Slide 1 · 1 of 2");
+  expect(screen.getByRole("button", { name: "Previous slide" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Next slide" }));
+  expect(dialog).toHaveTextContent("Slide 2 · 2 of 2");
+  fireEvent.click(screen.getByRole("button", { name: "Show slide 1" }));
+  expect(dialog).toHaveTextContent("Slide 1 · 1 of 2");
+  expect(screen.getByRole("link", { name: "Open full size" })).toHaveAttribute("href", "https://example.test/0.png");
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+it("opens the whole slideshow from the first ready slide", () => {
+  mount(makeVariant());
+  fireEvent.click(screen.getByRole("button", { name: "Preview slideshow" }));
+  expect(screen.getByRole("dialog")).toHaveTextContent("Slide 1 · 1 of 3");
+  fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
