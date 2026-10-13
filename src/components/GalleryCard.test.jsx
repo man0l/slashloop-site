@@ -105,6 +105,20 @@ function renderCard(ui) {
   );
 }
 
+describe("GalleryCard — Copy ID", () => {
+  it("sits next to the index badge and copies the raw video id", async () => {
+    getVideoDetail.mockResolvedValue(unexploredDetail);
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    renderCard();
+    const btn = screen.getByRole("button", { name: "Copy ID of video vid-1" });
+    expect(btn.parentElement).toHaveTextContent("1");
+    fireEvent.click(btn);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("vid-1"));
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+});
+
 describe("GalleryCard — analyze flow", () => {
   it("own-account posts show a You badge", () => {
     getVideoDetail.mockResolvedValue(unexploredDetail);
