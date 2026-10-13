@@ -37,15 +37,16 @@ function previewStorySlides(counts) {
   // 4+ slide decks usually end on a CTA; the server confirms from analysis.
   return Math.min(...usable.map((n) => Math.min(8, Math.max(3, n >= 4 ? n - 1 : n))));
 }
-export default function ExperimentCreate({ accessToken, workspaceId, videoIds, slideCountsByVideo, onClose }) {
+const DIRECTION_MAX = 8000;
+export default function ExperimentCreate({ accessToken, workspaceId, videoIds = [], slideCountsByVideo, initialMode, onClose }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY_FORM);
   // Survey: step 1 picks the mode, step 2 fills the mode's form, step 3
   // reviews the output preview and starts. Both modes share the exact same
   // pipeline — edit explicitly locks everything outside the selected variables.
-  const [step, setStep] = useState(1);
-  const [surveyMode, setSurveyMode] = useState("create");
+  const [step, setStep] = useState(initialMode ? 2 : 1);
+  const [surveyMode, setSurveyMode] = useState(initialMode || (videoIds.length ? "create" : "brief"));
   const [busy, setBusy] = useState(false);
   const [started, setStarted] = useState(0);
   const [problem, setProblem] = useState("");
@@ -55,6 +56,8 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
   const keys = useRef(new Map());
   const set = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
   const isEdit = surveyMode === "edit";
+  // "brief" = no source video: the direction is the whole spec and there is nothing to analyze.
+  const isBrief = surveyMode === "brief";
   // Supporting overlays only applies to a controlled hook test: each hook
   // variant may also retell slides 2–7 overlay copy to match its angle while
   // scenes stay identical. Any other variable set ignores the flag server-side.
@@ -64,9 +67,9 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
   // source, which keeps two different concepts from merging into one brief.
   const fallbackSlides = Number(form.slideCount) || 5;
   const slidesFor = (id) => previewStorySlides([slideCountsByVideo?.[id]]) ?? fallbackSlides;
-  const plan = videoIds.map((id) => {
-    const slides = slidesFor(id);
-    const one = estimateExperimentCredits(1, Number(form.variantCount) || 0, slides);
+  const plan = (isBrief ? ["brief"] : videoIds).map((id) => {
+    const slides = isBrief ? Number(form.slideCount) || 5 : slidesFor(id);
+    const one = estimateExperimentCredits(isBrief ? 0 : 1, Number(form.variantCount) || 0, slides);
     return { id, slides, one, cap: Math.max(30, Math.ceil((one.total * 2) / 10) * 10) };
   });
   const est = plan.reduce((a, p) => ({ start: a.start + p.one.start, generation: a.generation + p.one.generation, total: a.total + p.one.total }), { start: 0, generation: 0, total: 0 });
@@ -78,15 +81,17 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
   // Live validation: each field reports its own problem as you type.
   const errors = {
     goal: form.goal.trim() ? "" : "Goal is required — what should the experiment find out?",
-    sources: videoIds.length >= 1 && videoIds.length <= 20 ? "" : `Select 1–20 originals in Gallery (currently ${videoIds.length}).`,
+    sources: isBrief || (videoIds.length >= 1 && videoIds.length <= 20) ? "" : `Select 1–20 originals in Gallery (currently ${videoIds.length}).`,
+    direction: !isBrief || form.direction.trim() ? "" : "Creative direction is required — with no source video it is the whole brief.",
+    slideCount: !isBrief || (Number.isInteger(Number(form.slideCount)) && Number(form.slideCount) >= 3 && Number(form.slideCount) <= 8) ? "" : "Choose 3–8 slides per variant.",
     variantCount: Number.isInteger(Number(form.variantCount)) && Number(form.variantCount) >= 1 && Number(form.variantCount) <= 12 ? "" : "Choose 1–12 variants.",
   };
-  const firstProblem = errors.goal || errors.sources || errors.variantCount || "";
+  const firstProblem = errors.goal || errors.sources || errors.direction || errors.slideCount || errors.variantCount || "";
   async function submit(event) {
     event.preventDefault();
     if (inFlight.current) return;
     const { goal, brand, audience, language, direction, lockedConstraints, mode, variables, varySupportingOverlays, scriptOverlay, customValues, variantCount } = form;
-    const validation = errors.goal || errors.sources || errors.variantCount;
+    const validation = errors.goal || errors.sources || errors.direction || errors.slideCount || errors.variantCount;
     if (validation) { setProblem(validation); return; }
     inFlight.current = true; setBusy(true); setProblem(""); setStarted(0);
     const failures = [];
@@ -97,7 +102,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
         // One isolated experiment per original — briefs never mix sources.
         const input = {
           workspaceId,
-          videoIds: [p.id],
+          ...(isBrief ? { mode: "brief" } : { videoIds: [p.id] }),
           variantCount: Number(variantCount),
           slideCount: p.slides,
           maxCredits: p.cap,
@@ -145,23 +150,24 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
   }
   const totalImages = plan.reduce((n, p) => n + (Number(form.variantCount) || 0) * p.slides, 0);
   return <section className="my-6 rounded-xl p-5 sm:p-6" style={{ background: T.card, border: `1px solid ${T.line}` }} aria-label="Create experiment">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 style={{ ...fD, fontSize: 24, fontWeight: 800 }}>Create {videoIds.length > 1 ? `${videoIds.length} experiments` : "an experiment"}</h2><p className="mt-1 text-sm" style={{ color: T.muted }}>{videoIds.length} original{videoIds.length === 1 ? "" : "s"}, one experiment each · starts for ≈{est.start} credits · step {step} of 3</p></div><ExperimentButton onClick={onClose} disabled={busy}>Close setup</ExperimentButton></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 style={{ ...fD, fontSize: 24, fontWeight: 800 }}>{isBrief ? "Create an experiment from a brief" : `Create ${videoIds.length > 1 ? `${videoIds.length} experiments` : "an experiment"}`}</h2><p className="mt-1 text-sm" style={{ color: T.muted }}>{isBrief ? "No source video" : `${videoIds.length} original${videoIds.length === 1 ? "" : "s"}, one experiment each`} · starts for ≈{est.start} credits · step {step} of 3</p></div><ExperimentButton onClick={onClose} disabled={busy}>Close setup</ExperimentButton></div>
     <div className="mt-3 flex gap-1.5" aria-hidden="true">{[1, 2, 3].map((n) => <span key={n} className="h-1 flex-1 rounded" style={{ background: n <= step ? T.signal : T.line }} />)}</div>
     <form onSubmit={submit} className="mt-5 space-y-5">
-      {step === 1 && <div className="grid sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Experiment mode">
-        {[["edit", "Edit slideshow", "Edit selected variables — hook, character, style or angle — and keep everything else unchanged. Explore combinations to change several together. 1–20 originals."], ["create", "Create variations", "Generate new versions: hook, character, style, caption, call to action or angle. Up to 20 originals."]].map(([value, title, desc]) => <label key={value} className="rounded-lg p-4 cursor-pointer" style={{ background: T.paper, border: `2px solid ${surveyMode === value ? T.signal : T.line}` }}><input type="radio" name="survey-mode" value={value} checked={surveyMode === value} onChange={() => setSurveyMode(value)} /><strong className="block mt-1">{title}</strong><p className="text-sm m-0" style={{ color: T.muted }}>{desc}</p></label>)}
+      {step === 1 && <div className="grid sm:grid-cols-3 gap-3" role="radiogroup" aria-label="Experiment mode">
+        {[["edit", "Edit slideshow", "Edit selected variables — hook, character, style or angle — and keep everything else unchanged. Explore combinations to change several together. 1–20 originals."], ["create", "Create variations", "Generate new versions: hook, character, style, caption, call to action or angle. Up to 20 originals."], ["brief", "Start from a brief — no source video", "Write the whole brief yourself: goal, per-slide scene and copy, slide count. Nothing is analyzed first; one experiment is planned straight from your brief."]].map(([value, title, desc]) => <label key={value} className={`rounded-lg p-4 ${value !== "brief" && !videoIds.length ? "opacity-50" : "cursor-pointer"}`} style={{ background: T.paper, border: `2px solid ${surveyMode === value ? T.signal : T.line}` }}><input type="radio" name="survey-mode" value={value} checked={surveyMode === value} disabled={value !== "brief" && !videoIds.length} onChange={() => setSurveyMode(value)} /><strong className="block mt-1">{title}</strong><p className="text-sm m-0" style={{ color: T.muted }}>{desc}{value !== "brief" && !videoIds.length ? " Select originals in Gallery first." : ""}</p></label>)}
       </div>}
       {step === 2 && <>
       {isEdit && <p className="text-xs rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}`, color: T.muted }}>Only the selected variables may change. Original text stays unchanged unless you select hook, concept / angle or slide structure.</p>}
-      <div className="rounded-lg p-4 space-y-2" style={{ background: T.paper }}>
+      {!isBrief && <div className="rounded-lg p-4 space-y-2" style={{ background: T.paper }}>
         <ExperimentField label="Start from an example"><select defaultValue="" disabled={busy} onChange={(e) => { const example = EXAMPLES[e.target.value]; if (example) { const { label, ...values } = example; setForm((prev) => ({ ...EMPTY_FORM, ...values, brand: prev.brand, language: prev.language, maxCredits: prev.maxCredits, scriptOverlay: prev.scriptOverlay })); } }} style={experimentInputStyle}><option value="" disabled>Choose an example, or write your own below</option>{Object.entries(EXAMPLES).map(([id, example]) => <option key={id} value={id}>{example.label}</option>)}</select></ExperimentField>
         <p className="text-xs" style={{ color: T.muted }}>Replaces creative inputs. Keeps brand, language and credit cap.</p>
-      </div>
+      </div>}
+      {isBrief && <p className="text-xs rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}`, color: T.muted }}>No source video: nothing is analyzed. Your creative direction is the whole brief — describe each slide's scene and the exact overlay text.</p>}
       <ExperimentField label="Goal *"><input required value={form.goal} onChange={(e) => set("goal", e.target.value)} aria-invalid={!!errors.goal} style={{ ...experimentInputStyle, borderColor: errors.goal ? "#B3261E" : T.line }} placeholder="Find the hook that earns the first swipe" /></ExperimentField>
       {errors.goal && <p role="status" className="text-xs -mt-3" style={{ color: "#B3261E" }}>✎ {errors.goal}</p>}
       <div className="grid sm:grid-cols-3 gap-4">{["brand", "audience", "language"].map((name) => <ExperimentField key={name} label={name[0].toUpperCase() + name.slice(1)}><input value={form[name]} onChange={(e) => set(name, e.target.value)} style={experimentInputStyle} /></ExperimentField>)}</div>
       <div className="grid sm:grid-cols-2 gap-4">
-        <ExperimentField label="Creative direction"><textarea rows={3} value={form.direction} onChange={(e) => set("direction", e.target.value)} style={experimentInputStyle} /></ExperimentField>
+        <ExperimentField label={isBrief ? "Creative direction *" : "Creative direction"}><textarea rows={isBrief ? 10 : 3} maxLength={DIRECTION_MAX} required={isBrief} value={form.direction} onChange={(e) => set("direction", e.target.value)} aria-invalid={!!errors.direction} style={{ ...experimentInputStyle, borderColor: errors.direction ? "#B3261E" : T.line }} placeholder={isBrief ? "Slide 1: a kitchen counter, overlay “Stop scrolling”\nSlide 2: …" : undefined} />{isBrief && errors.direction && <p role="status" className="text-xs m-0" style={{ color: "#B3261E" }}>✎ {errors.direction}</p>}</ExperimentField>
         <ExperimentField label="Keep unchanged (one per line)"><textarea rows={3} value={form.lockedConstraints} onChange={(e) => set("lockedConstraints", e.target.value)} style={experimentInputStyle} placeholder="Keep product name unchanged" /></ExperimentField>
       </div>
       <ExperimentField label="Test mode"><select value={form.mode} onChange={(e) => setForm((prev) => ({ ...prev, mode: e.target.value, variables: e.target.value === "controlled" ? [prev.variables.find((v) => !["concept", "slides"].includes(v)) || "hook"] : prev.variables, varySupportingOverlays: false }))} style={experimentInputStyle}><option value="controlled">One-variable comparison</option><option value="exploration">Explore combinations</option></select></ExperimentField>
@@ -171,7 +177,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
       <ExperimentField label="Desired variable values (optional)"><input value={form.customValues} onChange={(e) => set("customValues", e.target.value)} style={experimentInputStyle} placeholder="Hook: question vs bold claim; character: founder" /></ExperimentField>
       <div className="grid sm:grid-cols-2 gap-4">
         <ExperimentField label="Variants (baseline included)"><input type="number" required min={1} max={12} step="1" value={form.variantCount} aria-invalid={!!errors.variantCount} onChange={(e) => set("variantCount", e.target.value)} style={{ ...experimentInputStyle, borderColor: errors.variantCount ? "#B3261E" : T.line }} />{errors.variantCount && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ 1–12 variants</p>}</ExperimentField>
-        <div className="flex flex-col gap-1.5 text-sm" style={{ color: T.ink }}><span>Slides per variant</span><p className="m-0 rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}` }}><strong>{slidesLabel}</strong> story slides<span className="block text-xs font-normal mt-1" style={{ color: T.muted }}>From each original — every original runs as its own experiment. A call-to-action slide is omitted when the source has one.</span></p></div>
+        {isBrief ? <ExperimentField label="Slides per variant (3–8)"><input type="number" required min={3} max={8} step="1" value={form.slideCount} aria-invalid={!!errors.slideCount} onChange={(e) => set("slideCount", e.target.value)} style={{ ...experimentInputStyle, borderColor: errors.slideCount ? "#B3261E" : T.line }} />{errors.slideCount && <p className="text-xs m-0" style={{ color: "#B3261E" }}>✎ {errors.slideCount}</p>}</ExperimentField> : <div className="flex flex-col gap-1.5 text-sm" style={{ color: T.ink }}><span>Slides per variant</span><p className="m-0 rounded-lg px-3 py-2" style={{ background: T.paper, border: `1px solid ${T.line}` }}><strong>{slidesLabel}</strong> story slides<span className="block text-xs font-normal mt-1" style={{ color: T.muted }}>From each original — every original runs as its own experiment. A call-to-action slide is omitted when the source has one.</span></p></div>}
       </div>
       </>}
       {step === 3 && <>
@@ -179,11 +185,11 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
       <section aria-label="What this experiment will produce" className="rounded-lg p-4 space-y-4" style={{ background: T.paper, border: `1px solid ${T.line}` }}>
         <h3 className="font-semibold">Output preview</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[[videoIds.length, "originals", "▣"], [videoIds.length, "experiments", "▤"], [videoIds.length * (Number(form.variantCount) || 0) || "—", "decks", "▥"], [totalImages || "—", "images", "▧"]].map(([count, label, icon]) => <div key={label} className="rounded-lg p-3" style={{ background: T.card, border: `1px solid ${T.line}` }}><span aria-hidden="true" className="text-lg" style={{ color: T.teal }}>{icon}</span><p className="mt-1"><strong className="text-2xl" style={fD}>{count}</strong>{" "}<span className="text-xs" style={{ color: T.muted }}>{label}</span></p></div>)}
+          {(isBrief ? [[0, "source videos", "▣"], [1, "experiment", "▤"], [Number(form.variantCount) || "—", "decks", "▥"], [totalImages || "—", "images", "▧"]] : [[videoIds.length, "originals", "▣"], [videoIds.length, "experiments", "▤"], [videoIds.length * (Number(form.variantCount) || 0) || "—", "decks", "▥"], [totalImages || "—", "images", "▧"]]).map(([count, label, icon]) => <div key={label} className="rounded-lg p-3" style={{ background: T.card, border: `1px solid ${T.line}` }}><span aria-hidden="true" className="text-lg" style={{ color: T.teal }}>{icon}</span><p className="mt-1"><strong className="text-2xl" style={fD}>{count}</strong>{" "}<span className="text-xs" style={{ color: T.muted }}>{label}</span></p></div>)}
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-medium">
-          <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>One experiment per original — briefs never mix sources</span>
-          <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{slidesLabel} slides per deck, from each original</span>
+          <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>{isBrief ? "Brief only — planned from your direction, no source video" : "One experiment per original — briefs never mix sources"}</span>
+          <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{isBrief ? `${slidesLabel} slides per deck` : `${slidesLabel} slides per deck, from each original`}</span>
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{isEdit ? "Selected variables change; everything else stays locked" : `Each deck: 1 baseline${(Number(form.variantCount) || 0) > 1 ? ` + ${(Number(form.variantCount) || 0) - 1} alternative${(Number(form.variantCount) || 0) === 2 ? "" : "s"}` : " only"}`}</span>
           {(Number(form.variantCount) || 0) > 1 && <span className="rounded-full px-3 py-1" style={{ background: T.card }}>{form.mode === "controlled" ? `${VARIABLES[form.variables[0]]} changes` : "Combined changes"}</span>}
           {hookSupport && form.varySupportingOverlays && <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>Supporting overlays vary</span>}
@@ -191,11 +197,11 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds, s
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>Manual publishing</span>
           <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>✨ ≈{est.generation} credits for images</span>
         </div>
-        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Edit rules", editRule(form.variables)]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || "Use the source patterns"], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Hook scope", hookSupport ? (form.varySupportingOverlays ? "Hook + supporting overlays (slides 2–7)" : "Slide 1 hook only") : "Not a hook test"], ["Overlay text", form.scriptOverlay ? "Drawn by code after the image is generated" : "Drawn by the image model"], ["Spending cap", `${capLabel} credits per experiment, ${capTotal} total (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
+        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Edit rules", editRule(form.variables)]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || (isBrief ? "Required" : "Use the source patterns")], ["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"], ["Hook scope", hookSupport ? (form.varySupportingOverlays ? "Hook + supporting overlays (slides 2–7)" : "Slide 1 hook only") : "Not a hook test"], ["Overlay text", form.scriptOverlay ? "Drawn by code after the image is generated" : "Drawn by the image model"], ["Spending cap", `${capLabel} credits per experiment, ${capTotal} total (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
       </section>
       {problem && <p role="alert" className="text-sm" style={{ color: "#B3261E" }}>{problem}</p>}
       <div className="flex flex-wrap items-center gap-3">
-        <ExperimentButton primary type="submit" disabled={busy || !!firstProblem} title={firstProblem || undefined}>{busy ? (started ? `Starting ${Math.min(started + 1, plan.length)} of ${plan.length}…` : "Starting…") : `✨ Start ${videoIds.length > 1 ? `${videoIds.length} experiments` : "experiment"} · ≈${est.start} credits`}</ExperimentButton>
+        <ExperimentButton primary type="submit" disabled={busy || !!firstProblem} title={firstProblem || undefined}>{busy ? (started ? `Starting ${Math.min(started + 1, plan.length)} of ${plan.length}…` : "Starting…") : `✨ Start ${!isBrief && videoIds.length > 1 ? `${videoIds.length} experiments` : "experiment"} · ≈${est.start} credits`}</ExperimentButton>
         {firstProblem && !busy && <span className="text-xs" style={{ color: "#B3261E" }}>✎ {firstProblem}</span>}
       </div>
       </>}

@@ -64,7 +64,11 @@ export function toggleSource(ids, id) {
 }
 export function validateExperiment(input) {
   if (!input.workspaceId) return "Choose a workspace.";
-  if (!Array.isArray(input.videoIds) || input.videoIds.length < 1 || input.videoIds.length > SOURCE_LIMIT || new Set(input.videoIds).size !== input.videoIds.length) return "Select 1–20 distinct Gallery originals.";
+  if (input.mode === "brief") {
+    // No source video: the direction is the spec, so it is required and videoIds must be absent.
+    if (input.videoIds?.length) return "A brief has no source video — remove the originals or use create mode.";
+    if (!input.instructions?.direction?.trim()) return "Write the creative direction — with no source video it is the whole brief.";
+  } else if (!Array.isArray(input.videoIds) || input.videoIds.length < 1 || input.videoIds.length > SOURCE_LIMIT || new Set(input.videoIds).size !== input.videoIds.length) return "Select 1–20 distinct Gallery originals.";
   if (!Number.isInteger(input.variantCount) || input.variantCount < 1 || input.variantCount > 12) return "Choose 1–12 variants, including the baseline.";
   if (!Number.isInteger(input.slideCount) || input.slideCount < 3 || input.slideCount > 8) return "Choose 3–8 slides per variant.";
   if (!Number.isFinite(input.maxCredits) || input.maxCredits <= 0) return "Enter an explicit credit ceiling greater than zero.";
