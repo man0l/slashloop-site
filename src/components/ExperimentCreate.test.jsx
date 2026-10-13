@@ -164,6 +164,31 @@ it("sends slide-1-hook-only by default and hides the option for non-hook variabl
   await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ instructions: expect.objectContaining({ variables: ["visualStyle"], varySupportingOverlays: false }) })));
 });
 
+it.each(["create", "edit"])("%s mode: the code-drawn overlay checkbox forces overlayMode script and is off by default", async (mode) => {
+  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
+  if (mode === "edit") fireEvent.click(screen.getByRole("radio", { name: /Edit slideshow/ }));
+  goCreate();
+  const box = screen.getByLabelText(/Draw overlay text with code/);
+  expect(box).not.toBeChecked();
+  fireEvent.click(box);
+  fireEvent.change(screen.getByLabelText("Start from an example"), { target: { value: "cta" } });
+  expect(screen.getByLabelText(/Draw overlay text with code/)).toBeChecked();
+  goReview();
+  expect(screen.getByRole("region", { name: "What this experiment will produce" })).toHaveTextContent("Overlay text drawn by code");
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(1));
+  expect(createExperiment.mock.calls[0][1].instructions).toMatchObject({ overlayMode: "script" });
+});
+it("omits overlayMode entirely when the checkbox is left alone", async () => {
+  createExperiment.mockResolvedValue({ experiment: { id: "e1" } }); mutateExperiment.mockResolvedValue({}); mount();
+  goCreate();
+  fireEvent.change(screen.getByLabelText(/^Goal/), { target: { value: "Test hooks" } });
+  goReview();
+  fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
+  await waitFor(() => expect(createExperiment).toHaveBeenCalledTimes(1));
+  expect(createExperiment.mock.calls[0][1].instructions).not.toHaveProperty("overlayMode");
+});
+
 it.each(["create", "edit"])("%s mode sends multiple exploration variables and their values without collapsing to one", async (mode) => {
   createExperiment.mockResolvedValue({ experiment: { id: "combo" } }); mutateExperiment.mockResolvedValue({}); mount();
   if (mode === "edit") fireEvent.click(screen.getByRole("radio", { name: /Edit slideshow/ }));
