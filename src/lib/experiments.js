@@ -127,17 +127,17 @@ export function createExperiment(accessToken, input) {
   if (problem) throw new Error(problem);
   return apiFetch("/api/experiments", { method: "POST", accessToken, body: input });
 }
-export async function estimateExperiment(accessToken, workspaceId, id, stage, variantIds, signal, taskIds) {
+export async function estimateExperiment(accessToken, workspaceId, id, stage, variantIds, signal, taskIds, feedback) {
   requireScope(accessToken, workspaceId);
   const result = await apiFetch(`${pathFor(id)}/estimate`, {
-    method: "POST", accessToken, signal, body: { workspaceId, stage, ...(variantIds ? { variantIds } : {}), ...(taskIds ? { taskIds } : {}) },
+    method: "POST", accessToken, signal, body: { workspaceId, stage, ...(variantIds ? { variantIds } : {}), ...(taskIds ? { taskIds } : {}), ...(stage === "feedback" ? feedback : {}) },
   });
   if (!result.estimate || !Number.isFinite(result.estimate.totalCredits)) throw new Error("The server did not return a valid credit estimate. No work was started.");
   return result.estimate;
 }
 export function mutateExperiment(accessToken, workspaceId, id, action, input = {}) {
   requireScope(accessToken, workspaceId);
-  if (!["plan", "generate", "cancel", "retry"].includes(action)) throw new Error("Unsupported experiment action.");
+  if (!["plan", "generate", "cancel", "retry", "feedback"].includes(action)) throw new Error("Unsupported experiment action.");
   if (!input.idempotencyKey) throw new Error("An idempotency key is required.");
   return apiFetch(`${pathFor(id)}/${action}`, { method: "POST", accessToken, body: { ...input, workspaceId } });
 }
@@ -156,6 +156,22 @@ export function deleteExperiments(accessToken, workspaceId, ids) {
   requireScope(accessToken, workspaceId);
   if (!Array.isArray(ids) || !ids.length) throw new Error("Select at least one experiment to delete.");
   return apiFetch("/api/experiments", { method: "DELETE", accessToken, body: { workspaceId, ids } });
+}
+/** Mirrors the backend FEEDBACK_MAX: the longest note one slide or slideshow may carry. */
+export const FEEDBACK_MAX = 1000;
+/**
+ * The feedback request body for one variant, or null when nothing was written.
+ * Blank notes are dropped; a slideshow note re-renders every slide on the server,
+ * slide notes re-render only those slides (indexes are 0-based).
+ */
+export function feedbackRequest(variantId, deckNote, slideNotes) {
+  const feedback = String(deckNote ?? "").trim();
+  const slides = Object.entries(slideNotes ?? {})
+    .map(([index, note]) => ({ index: Number(index), feedback: String(note ?? "").trim() }))
+    .filter((s) => s.feedback && Number.isInteger(s.index))
+    .sort((a, b) => a.index - b.index);
+  if (!feedback && !slides.length) return null;
+  return { variantId, ...(feedback ? { feedback } : {}), ...(slides.length ? { slides } : {}) };
 }
 /** Plan + pack wallet. remainingCredits is the experiment cap leftover, not spendable cash. */
 export function walletCredits(estimate) {

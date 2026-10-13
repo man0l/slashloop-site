@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiFetch } from "./http.js";
-import { createExperiment, estimateBlockReason, estimateExperiment, experimentPollInterval, explainExperimentError, getExperiment, listExperiments, mutateExperiment, mutationKey, SOURCE_LIMIT, toggleSource, updateExperimentVariant, validateExperiment, walletCredits } from "./experiments.js";
+import { createExperiment, estimateBlockReason, estimateExperiment, feedbackRequest, experimentPollInterval, explainExperimentError, getExperiment, listExperiments, mutateExperiment, mutationKey, SOURCE_LIMIT, toggleSource, updateExperimentVariant, validateExperiment, walletCredits } from "./experiments.js";
 vi.mock("./http.js", () => ({ apiFetch: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
 const valid = () => ({ workspaceId: "w1", videoIds: ["v1"], variantCount: 3, slideCount: 5, maxCredits: 80, instructions: { goal: "Find a hook", mode: "controlled", variables: ["hook"] } });
@@ -74,4 +74,15 @@ it("validates a brief-only experiment: no videoIds, a direction, the usual bound
   expect(validateExperiment({ ...brief, instructions: { ...brief.instructions, direction: "  " } })).toMatch(/creative direction/i);
   expect(validateExperiment({ ...brief, slideCount: 9 })).not.toBe("");
   expect(validateExperiment({ ...rest, instructions: valid().instructions })).not.toBe("");
+});
+it("builds the feedback request and the feedback estimate/action bodies (SLA-797)", async () => {
+  expect(feedbackRequest("v", "  ", { 2: " ", 0: "" })).toBeNull();
+  expect(feedbackRequest("v", " whole deck ", { 4: " LTN ", 1: "MTN", 3: "  " })).toEqual({ variantId: "v", feedback: "whole deck", slides: [{ index: 1, feedback: "MTN" }, { index: 4, feedback: "LTN" }] });
+  apiFetch.mockResolvedValue({ estimate: { totalCredits: 12 } });
+  const body = { variantId: "v", slides: [{ index: 4, feedback: "LTN" }] };
+  await estimateExperiment("t", "w", "e", "feedback", undefined, undefined, undefined, body);
+  expect(apiFetch).toHaveBeenLastCalledWith("/api/experiments/e/estimate", expect.objectContaining({ body: { workspaceId: "w", stage: "feedback", ...body } }));
+  apiFetch.mockResolvedValue({ experiment: {} });
+  await mutateExperiment("t", "w", "e", "feedback", { ...body, idempotencyKey: "k" });
+  expect(apiFetch).toHaveBeenLastCalledWith("/api/experiments/e/feedback", expect.objectContaining({ method: "POST", body: { ...body, idempotencyKey: "k", workspaceId: "w" } }));
 });

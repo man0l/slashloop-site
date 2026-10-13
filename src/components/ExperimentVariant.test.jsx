@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import ExperimentVariant from "./ExperimentVariant.jsx";
 afterEach(cleanup);
@@ -26,4 +26,31 @@ it("compares actual saved values, not stale planning metadata", () => {
   expect(screen.getByText("Compare exact changes").closest("details")).toHaveTextContent("Editorial, one photograph");
   expect(screen.getByText("Natural portrait")).toBeInTheDocument();
   expect(screen.queryByText("Old studio prompt")).not.toBeInTheDocument();
+});
+it("collects slideshow and per-slide feedback and hands it to the estimate flow (SLA-797)", () => {
+  const onFeedback = vi.fn();
+  mount(makeVariant(), { canFeedback: true, onFeedback });
+  fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+  const estimate = screen.getByRole("button", { name: "Estimate regeneration" });
+  expect(estimate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Change on slide 3"), { target: { value: "  LTN still looks like MTN  " } });
+  fireEvent.change(screen.getByLabelText(/across the whole slideshow/), { target: { value: "stronger downgrade" } });
+  fireEvent.click(estimate);
+  expect(onFeedback).toHaveBeenCalledWith({ variantId: "v", feedback: "stronger downgrade", slides: [{ index: 2, feedback: "LTN still looks like MTN" }] });
+});
+it("hides the feedback form on legacy experiments and disables it while the variant cannot be regenerated", () => {
+  const { unmount } = mount(makeVariant());
+  expect(screen.queryByRole("button", { name: "Request changes" })).not.toBeInTheDocument();
+  unmount();
+  mount(makeVariant(), { canFeedback: false, onFeedback: vi.fn() });
+  expect(screen.getByRole("button", { name: "Request changes" })).toBeDisabled();
+});
+it("shows the feedback history and marks slides carrying feedback", () => {
+  const v = makeVariant();
+  v.slides[1].feedback = ["This slide: softer jaw"];
+  v.feedback = [{ at: "2026-10-13T07:00:00Z", feedback: null, slides: [{ index: 1, feedback: "softer jaw" }], redo: [1], previousQa: "passed" }];
+  mount(v, { canFeedback: true, onFeedback: vi.fn() });
+  expect(screen.getByText("Feedback history (1)")).toBeInTheDocument();
+  expect(screen.getByText("Your feedback applied")).toBeInTheDocument();
+  expect(screen.getByText(/regenerated slide 2/)).toBeInTheDocument();
 });
