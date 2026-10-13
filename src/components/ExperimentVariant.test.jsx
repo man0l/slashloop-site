@@ -38,6 +38,21 @@ it("collects slideshow and per-slide feedback and hands it to the estimate flow 
   fireEvent.click(estimate);
   expect(onFeedback).toHaveBeenCalledWith({ variantId: "v", feedback: "stronger downgrade", slides: [{ index: 2, feedback: "LTN still looks like MTN" }] });
 });
+it("lets every finished slide request changes on its own, not only failed ones", () => {
+  const onFeedback = vi.fn();
+  mount(makeVariant(), { canFeedback: true, onFeedback });
+  expect(screen.getAllByRole("button", { name: /^Request changes on slide \d$/ })).toHaveLength(3);
+  fireEvent.click(screen.getByRole("button", { name: "Request changes on slide 2" }));
+  expect(screen.getByLabelText("Change on slide 2")).toHaveFocus();
+  expect(screen.queryByRole("button", { name: "Request changes on slide 2" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Change on slide 2"), { target: { value: "softer jaw" } });
+  fireEvent.click(screen.getByRole("button", { name: "Estimate regeneration" }));
+  expect(onFeedback).toHaveBeenCalledWith({ variantId: "v", slides: [{ index: 1, feedback: "softer jaw" }] });
+});
+it("disables per-slide feedback while the variant cannot be regenerated", () => {
+  mount(makeVariant(), { canFeedback: false, onFeedback: vi.fn() });
+  for (const b of screen.getAllByRole("button", { name: /^Request changes on slide/ })) expect(b).toBeDisabled();
+});
 it("hides the feedback form on legacy experiments and disables it while the variant cannot be regenerated", () => {
   const { unmount } = mount(makeVariant());
   expect(screen.queryByRole("button", { name: "Request changes" })).not.toBeInTheDocument();
