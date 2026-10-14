@@ -4,6 +4,7 @@ import { T, fD, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton } from "../components/ui.jsx";
 import { useAuth } from "../lib/auth.jsx";
 import { getBillingStatus } from "../lib/api.js";
+import { formatCredits } from "../lib/credits.js";
 
 const POLL_MS = 1500;
 const MAX_ATTEMPTS = 20; // ~30s
@@ -145,7 +146,7 @@ export default function BillingSuccess() {
                 {" "}
                 — <strong>{planLabel}</strong>
                 {typeof snapshot?.planCredits === "number"
-                  ? ` · ${(snapshot.planCredits + (snapshot.packCredits ?? 0)).toLocaleString()} credits`
+                  ? ` · ${formatCredits(snapshot.planCredits + (snapshot.packCredits ?? 0))}`
                   : ""}
               </>
             ) : null}
@@ -161,7 +162,7 @@ export default function BillingSuccess() {
                 {" "}
                 Last status: <strong>{planLabel}</strong>
                 {typeof snapshot.planCredits === "number"
-                  ? ` · ${(snapshot.planCredits + (snapshot.packCredits ?? 0)).toLocaleString()} credits`
+                  ? ` · ${formatCredits(snapshot.planCredits + (snapshot.packCredits ?? 0))}`
                   : ""}
                 .
               </>

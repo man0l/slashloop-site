@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton, Skeleton } from "../components/ui.jsx";
 import CreditTopUp from "../components/CreditTopUp.jsx";
+import { creditsToUsd } from "../lib/credits.js";
 import FirstRunSteps from "../components/FirstRunSteps.jsx";
 import TeamCard from "../components/TeamCard.jsx";
 import { useAuth } from "../lib/auth.jsx";
@@ -88,11 +89,17 @@ export default function Account() {
             <div className="mt-4 grid grid-cols-2 gap-4" style={{ ...fM, fontSize: 13 }}>
               <div>
                 <div style={{ color: T.muted, fontSize: 11 }}>PLAN CREDITS</div>
-                <div className="mt-1" style={{ fontSize: 18, fontWeight: 600 }}>{billing.planCredits}</div>
+                <div className="mt-1" style={{ fontSize: 18, fontWeight: 600 }}>
+                  {billing.planCredits}
+                  {creditsToUsd(billing.planCredits) && <span style={{ fontSize: 12, fontWeight: 400, color: T.muted }}> ≈ {creditsToUsd(billing.planCredits)}</span>}
+                </div>
               </div>
               <div>
                 <div style={{ color: T.muted, fontSize: 11 }}>PACK CREDITS</div>
-                <div className="mt-1" style={{ fontSize: 18, fontWeight: 600 }}>{billing.packCredits}</div>
+                <div className="mt-1" style={{ fontSize: 18, fontWeight: 600 }}>
+                  {billing.packCredits}
+                  {creditsToUsd(billing.packCredits) && <span style={{ fontSize: 12, fontWeight: 400, color: T.muted }}> ≈ {creditsToUsd(billing.packCredits)}</span>}
+                </div>
               </div>
             </div>
             {billing.periodEnd && (

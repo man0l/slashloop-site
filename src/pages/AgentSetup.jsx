@@ -171,7 +171,7 @@ export default function AgentSetup() {
             like code in the morning — the agent keeps the taste check with you.
           </p>
           <p className="mt-3 mb-0" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>
-            reads are free · refresh ≈ 1.5cr/video · analyze 5cr · briefs 2cr · full costs on /pricing
+            reads are free · refresh ≈ 1.5cr ($0.015)/video · analyze 5cr ($0.05) · briefs 2cr ($0.02) · 1cr = $0.01 · full costs on /pricing
           </p>
         </div>
       </section>

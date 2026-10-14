@@ -9,6 +9,7 @@ import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
 import { listSources, createSource, refreshSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
 import { discoverSeeds, mineDiscoverSeedUntilDone, DiscoverApiError } from "../lib/discover.js";
+import { creditsToUsd, formatCredits } from "../lib/credits.js";
 
 const MAX_INPUTS = 8;
 
@@ -392,7 +393,7 @@ export default function Discover() {
             <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <p style={{ ...fM, fontSize: 11, color: T.muted, lineHeight: 1.6 }}>
                 Separate terms with commas or newlines — #hashtags and @handles work too (up to {MAX_INPUTS}).<br />
-                AI expansion 3 credits + ~1.5 credits per sampled video; empty probes are refunded.
+                AI expansion 3 credits ({creditsToUsd(3)}) + ~1.5 credits ({creditsToUsd(1.5)}) per sampled video; empty probes are refunded.
               </p>
               <button
                 type="submit"
@@ -535,7 +536,7 @@ export default function Discover() {
           )}
           {status === "done" && credits.remaining != null && (
             <p style={{ ...fM, fontSize: 11, color: T.muted }}>
-              {credits.charged} credit{credits.charged === 1 ? "" : "s"} charged · {credits.remaining} remaining
+              {formatCredits(credits.charged)} charged · {formatCredits(credits.remaining)} remaining
             </p>
           )}
         </div>

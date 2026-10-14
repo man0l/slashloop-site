@@ -54,14 +54,14 @@ it("places completed results before collapsed evidence and labels saved inputs",
 it("blocks when the workspace wallet cannot cover the estimate", async () => {
   api.estimateExperiment.mockResolvedValue({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 204 }); mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" }));
   expect(await screen.findByRole("button", { name: "Approve & start generation" })).toBeDisabled(); expect(api.mutateExperiment).not.toHaveBeenCalled();
-  expect(screen.getByText("Available").closest("div").querySelector("dd").textContent).toBe("204");
+  expect(screen.getByText("Available").closest("div").querySelector("dd").textContent).toBe("204≈ $2.04");
   expect(screen.getByText(/Not enough credits/)).toBeInTheDocument();
 });
 it("lets pack credits cover generation even when the experiment auto-cap is short", async () => {
   api.estimateExperiment.mockResolvedValue({ analysisCredits: 0, planningCredits: 0, generationCredits: 270, totalCredits: 270, remainingCredits: 204, workspaceCredits: 500 });
   mount(); await screen.findByText("Question hook"); fireEvent.click(screen.getByRole("button", { name: "Estimate selected generation" }));
   expect(await screen.findByRole("button", { name: "Approve & start generation" })).toBeEnabled();
-  expect(screen.getByText("Available").closest("div").querySelector("dd").textContent).toBe("500");
+  expect(screen.getByText("Available").closest("div").querySelector("dd").textContent).toBe("500≈ $5.00");
   expect(screen.queryByText(/Not enough credits/)).not.toBeInTheDocument();
 });
 it("requires a planning estimate and leaves generation manual", async () => {

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { T, fD } from "../lib/theme.js";
 import { createExperiment, estimateExperimentCredits, mutationKey, mutateExperiment, validateExperiment } from "../lib/experiments.js";
 import { experimentKey } from "../lib/useExperiments.js";
+import { creditsToUsd, formatCredits } from "../lib/credits.js";
 
 export const experimentInputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card, color: T.ink, fontSize: 14 };
 export function ExperimentButton({ children, primary, ...props }) {
@@ -76,6 +77,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds = 
   const caps = plan.map((p) => p.cap);
   const capLabel = new Set(caps).size > 1 ? `${Math.min(...caps)}–${Math.max(...caps)}` : String(caps[0] ?? 30);
   const capTotal = caps.reduce((a, b) => a + b, 0);
+  const capUsd = new Set(caps).size > 1 ? `${creditsToUsd(Math.min(...caps))}–${creditsToUsd(Math.max(...caps))}` : creditsToUsd(caps[0] ?? 30);
   const slideValues = [...new Set(plan.map((p) => p.slides))];
   const slidesLabel = slideValues.length > 1 ? `${Math.min(...slideValues)}–${Math.max(...slideValues)}` : String(slideValues[0] ?? fallbackSlides);
   // Live validation: each field reports its own problem as you type.
@@ -152,7 +154,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds = 
   }
   const totalImages = plan.reduce((n, p) => n + (Number(form.variantCount) || 0) * p.slides, 0);
   return <section className="my-6 rounded-xl p-5 sm:p-6" style={{ background: T.card, border: `1px solid ${T.line}` }} aria-label="Create experiment">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 style={{ ...fD, fontSize: 24, fontWeight: 800 }}>{isBrief ? "Create an experiment from a brief" : `Create ${videoIds.length > 1 ? `${videoIds.length} experiments` : "an experiment"}`}</h2><p className="mt-1 text-sm" style={{ color: T.muted }}>{isBrief ? "No source video" : `${videoIds.length} original${videoIds.length === 1 ? "" : "s"}, one experiment each`} · starts for ≈{est.start} credits · step {step} of 3</p></div><ExperimentButton onClick={onClose} disabled={busy}>Close setup</ExperimentButton></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 style={{ ...fD, fontSize: 24, fontWeight: 800 }}>{isBrief ? "Create an experiment from a brief" : `Create ${videoIds.length > 1 ? `${videoIds.length} experiments` : "an experiment"}`}</h2><p className="mt-1 text-sm" style={{ color: T.muted }}>{isBrief ? "No source video" : `${videoIds.length} original${videoIds.length === 1 ? "" : "s"}, one experiment each`} · starts for ≈{formatCredits(est.start)} · step {step} of 3</p></div><ExperimentButton onClick={onClose} disabled={busy}>Close setup</ExperimentButton></div>
     <div className="mt-3 flex gap-1.5" aria-hidden="true">{[1, 2, 3].map((n) => <span key={n} className="h-1 flex-1 rounded" style={{ background: n <= step ? T.signal : T.line }} />)}</div>
     <form onSubmit={submit} className="mt-5 space-y-5">
       {step === 1 && <div className="grid sm:grid-cols-3 gap-3" role="radiogroup" aria-label="Experiment mode">
@@ -183,7 +185,7 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds = 
       </div>
       </>}
       {step === 3 && <>
-      <p className="text-xs" style={{ color: T.muted }}>Each experiment auto-stops at <strong>{capLabel} credits</strong> (up to {capTotal} total) if anything runs away. Image generation is approved separately after brief review.</p>
+      <p className="text-xs" style={{ color: T.muted }}>Each experiment auto-stops at <strong>{capLabel} credits ({capUsd})</strong> (up to {formatCredits(capTotal)} total) if anything runs away. Image generation is approved separately after brief review.</p>
       <section aria-label="What this experiment will produce" className="rounded-lg p-4 space-y-4" style={{ background: T.paper, border: `1px solid ${T.line}` }}>
         <h3 className="font-semibold">Output preview</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -197,13 +199,13 @@ export default function ExperimentCreate({ accessToken, workspaceId, videoIds = 
           {hookSupport && form.varySupportingOverlays && <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>Supporting overlays vary</span>}
           {form.scriptOverlay && <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>Overlay text drawn by code</span>}
           <span className="rounded-full px-3 py-1" style={{ background: T.card }}>Manual publishing</span>
-          <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>✨ ≈{est.generation} credits for images</span>
+          <span className="rounded-full px-3 py-1" style={{ background: T.card, color: T.teal }}>✨ ≈{formatCredits(est.generation)} for images</span>
         </div>
-        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Edit rules", editRule(form.variables)]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || (isBrief ? "Required" : "Use the source patterns")], ...(isBrief ? [] : [["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"]]), ["Hook scope", hookSupport ? (form.varySupportingOverlays ? "Hook + supporting overlays (slides 2–7)" : "Slide 1 hook only") : "Not a hook test"], ["Overlay text", form.scriptOverlay ? "Drawn by code after the image is generated" : "Drawn by the image model"], ["Spending cap", `${capLabel} credits per experiment, ${capTotal} total (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
+        <details><summary className="text-sm cursor-pointer">Review exact inputs</summary><dl className="mt-3 grid sm:grid-cols-2 gap-3 text-sm">{(isEdit ? [["Edit rules", editRule(form.variables)]] : []).concat([["Goal", form.goal || "Add your goal above"], ["Audience", form.audience || "Not specified"], ["Brand", form.brand || "Not specified"], ["Language", form.language || "Not specified"], ["Creative direction", form.direction || (isBrief ? "Required" : "Use the source patterns")], ...(isBrief ? [] : [["Requested values", form.customValues || "Planner proposes values"], ["Keep unchanged", form.lockedConstraints || "No additional rules"]]), ["Hook scope", hookSupport ? (form.varySupportingOverlays ? "Hook + supporting overlays (slides 2–7)" : "Slide 1 hook only") : "Not a hook test"], ["Overlay text", form.scriptOverlay ? "Drawn by code after the image is generated" : "Drawn by the image model"], ["Spending cap", `${capLabel} credits (${capUsd}) per experiment, ${formatCredits(capTotal)} total (automatic)`]]).map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="whitespace-pre-wrap break-words" style={{ color: T.muted }}>{value}</dd></div>)}</dl></details>
       </section>
       {problem && <p role="alert" className="text-sm" style={{ color: "#B3261E" }}>{problem}</p>}
       <div className="flex flex-wrap items-center gap-3">
-        <ExperimentButton primary type="submit" disabled={busy || !!firstProblem} title={firstProblem || undefined}>{busy ? (started ? `Starting ${Math.min(started + 1, plan.length)} of ${plan.length}…` : "Starting…") : `✨ Start ${!isBrief && videoIds.length > 1 ? `${videoIds.length} experiments` : "experiment"} · ≈${est.start} credits`}</ExperimentButton>
+        <ExperimentButton primary type="submit" disabled={busy || !!firstProblem} title={firstProblem || undefined}>{busy ? (started ? `Starting ${Math.min(started + 1, plan.length)} of ${plan.length}…` : "Starting…") : `✨ Start ${!isBrief && videoIds.length > 1 ? `${videoIds.length} experiments` : "experiment"} · ≈${formatCredits(est.start)}`}</ExperimentButton>
         {firstProblem && !busy && <span className="text-xs" style={{ color: "#B3261E" }}>✎ {firstProblem}</span>}
       </div>
       </>}
