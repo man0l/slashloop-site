@@ -1,4 +1,5 @@
 import { apiFetch } from "./http.js";
+import { formatCredits } from "./credits.js";
 
 export const SOURCE_LIMIT = 20;
 export const ACTIVE_EXPERIMENT_STATES = new Set(["queued", "analyzing", "synthesizing", "planning", "generating", "running"]);
@@ -183,7 +184,7 @@ export function estimateBlockReason(estimate, experiment) {
   if (!estimate || !Number.isFinite(estimate.totalCredits) || estimate.totalCredits < 0) return "A valid estimate is required.";
   const wallet = walletCredits(estimate);
   if (!Number.isFinite(wallet)) return "Available credits could not be verified.";
-  if (estimate.totalCredits > wallet) return "Not enough credits. Add credits before continuing.";
+  if (estimate.totalCredits > wallet) return `Not enough credits: this needs ${formatCredits(estimate.totalCredits)}, ${formatCredits(wallet)} available. Add credits before continuing.`;
   if (!Number.isFinite(experiment.maxCredits)) return "This experiment has no verified credit ceiling.";
   return "";
 }

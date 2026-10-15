@@ -2,6 +2,7 @@ import { useState } from "react";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
 import CreditTopUp from "../components/CreditTopUp.jsx";
+import { creditsToUsd, formatCredits } from "../lib/credits.js";
 import { useAuth } from "../lib/auth.jsx";
 import { createCheckoutSession, BillingApiError } from "../lib/api.js";
 
@@ -11,7 +12,7 @@ const PLANS = [
     name: "Free",
     monthly: 0,
     annual: 0,
-    credits: "300",
+    credits: 300,
     sources: "2",
     gates: ["Manual refresh only", "1 seat"],
   },
@@ -20,7 +21,7 @@ const PLANS = [
     name: "Creator",
     monthly: 29,
     annual: 290,
-    credits: "3,000",
+    credits: 3000,
     sources: "10",
     gates: ["Scheduled weekly refresh", "1 seat"],
     highlight: true,
@@ -30,7 +31,7 @@ const PLANS = [
     name: "Pro",
     monthly: 79,
     annual: 790,
-    credits: "10,000",
+    credits: 10000,
     sources: "30",
     gates: ["Scheduled daily refresh", "Alerts", "Direct API access"],
   },
@@ -38,11 +39,11 @@ const PLANS = [
 
 const CREDIT_TABLE = [
   ["Browse feed, sources, boards, ideas, settings", "Free"],
-  ["Refresh a source / discover search", "1.5 credits per video"],
-  ["Analyze a video", "5 credits"],
-  ["Extract hook / generate variations / create brief", "2 credits"],
-  ["Generate experiment slides", "10 credits per slide"],
-  ["Recreate a slideshow", "10 credits per slide"],
+  ["Refresh a source / discover search", `1.5 credits (${creditsToUsd(1.5)}) per video`],
+  ["Analyze a video", formatCredits(5)],
+  ["Extract hook / generate variations / create brief", formatCredits(2)],
+  ["Generate experiment slides", `${formatCredits(10)} per slide`],
+  ["Recreate a slideshow", `${formatCredits(10)} per slide`],
 ];
 
 function PlanCard({ plan, interval }) {
@@ -84,7 +85,7 @@ function PlanCard({ plan, interval }) {
         <span style={{ ...fM, fontSize: 13, color: T.muted }}>{period}</span>
       </div>
       <div className="mt-1" style={{ ...fM, fontSize: 12, color: T.muted }}>
-        {plan.credits} credits/mo · {plan.sources} sources
+        {formatCredits(plan.credits)}/mo · {plan.sources} sources
       </div>
       <ul className="mt-5 space-y-2 flex-1">
         {plan.gates.map((g) => (

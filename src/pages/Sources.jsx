@@ -10,6 +10,7 @@ import { useWorkspace } from "../lib/workspace.jsx";
 import { useToast } from "../lib/toast.jsx";
 import { listSources, createSource, updateSource, deleteSource, refreshSource, suggestSources, verifySuggestedSource, dismissSuggestedSource, SourcesApiError } from "../lib/sources.js";
 import { refreshIssueFromSource } from "../lib/refreshLog.js";
+import { formatCredits } from "../lib/credits.js";
 import { displayMediaUrl } from "../lib/mediaUrl.js";
 
 const inputStyle = { ...fB, fontSize: 13, padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, background: T.card };
@@ -485,7 +486,7 @@ function SuggestedSourcesPanel({ accessToken, workspaceId, onTracked }) {
           )}
           {status === "done" && (
             <p className="mt-3" style={{ ...fM, fontSize: 11, color: T.muted }}>
-              {creditsCharged} credit{creditsCharged === 1 ? "" : "s"} charged · {creditsRemaining} remaining
+              {formatCredits(creditsCharged)} charged · {formatCredits(creditsRemaining)} remaining
             </p>
           )}
         </div>
@@ -698,9 +699,9 @@ function refreshDoneMsg(ok, failed, charged, remaining) {
     : `Refresh queued for ${ok}, ${failed} failed to queue.`;
   if (!charged || typeof charged.value !== "number") return base;
   const cost = charged.estimated
-    ? `up to ~${charged.value} credits`
-    : `${charged.value} credit${charged.value === 1 ? "" : "s"} charged`;
-  return typeof remaining === "number" ? `${base} (${cost} · ${remaining} remaining)` : `${base} (${cost})`;
+    ? `up to ~${formatCredits(charged.value)}`
+    : `${formatCredits(charged.value)} charged`;
+  return typeof remaining === "number" ? `${base} (${cost} · ${formatCredits(remaining)} remaining)` : `${base} (${cost})`;
 }
 
 /** The four per-row action icon buttons — identical on desktop and mobile. */

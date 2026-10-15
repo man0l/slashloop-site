@@ -2,6 +2,7 @@ import { useState } from "react";
 import { T, fD, fB, fM } from "../lib/theme.js";
 import { CTAButton } from "./ui.jsx";
 import { createCheckoutSession, BillingApiError } from "../lib/api.js";
+import { creditsToUsd } from "../lib/credits.js";
 
 // 1 credit = $0.01 (src/lib/credits.ts in the slashloop repo) — the amount
 // charged in cents becomes the credit grant 1:1, no separate price lookup.
@@ -80,7 +81,7 @@ export default function CreditTopUp({ accessToken }) {
         </CTAButton>
       </div>
       <p className="mt-1.5" style={{ ...fM, fontSize: 11, color: T.muted }}>
-        {(clamp(amount) * 100).toLocaleString()} credits · ${MIN_TOPUP} minimum · price excludes VAT
+        {(clamp(amount) * 100).toLocaleString("en-US")} credits (1 credit = {creditsToUsd(1)}) · ${MIN_TOPUP} minimum · price excludes VAT
       </p>
       {status === "error" && (
         <p className="mt-2" style={{ ...fM, fontSize: 12, color: "#B3261E" }}>{error}</p>

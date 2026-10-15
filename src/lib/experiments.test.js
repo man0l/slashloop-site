@@ -51,6 +51,7 @@ it("fails closed for missing estimates and unavailable credit balances", async (
   expect(walletCredits({ workspaceCredits: 500, remainingCredits: 204 })).toBe(500);
   expect(estimateBlockReason({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 500 }, { maxCredits: 210, creditsCharged: 6 })).toBe("");
   expect(estimateBlockReason({ totalCredits: 270, remainingCredits: 204, workspaceCredits: 204 }, { maxCredits: 210, creditsCharged: 6 })).toMatch(/Not enough/);
+  expect(estimateBlockReason({ totalCredits: 270, workspaceCredits: 204 }, { maxCredits: 210 })).toBe("Not enough credits: this needs 270 credits ($2.70), 204 credits ($2.04) available. Add credits before continuing.");
 });
 
 it("explains job causes with what happened and what to do", () => {

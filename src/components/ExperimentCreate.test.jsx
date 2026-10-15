@@ -33,6 +33,7 @@ it("starts the experiment in one click: creates the draft and approves planning"
   expect(screen.queryByLabelText("Credit ceiling")).not.toBeInTheDocument();
   goReview();
   expect(screen.getByRole("button", { name: /Start experiment/ })).toHaveTextContent("credits");
+  expect(screen.getByRole("button", { name: /Start experiment/ })).toHaveTextContent(/≈\d[\d,]* credits \(\$\d+\.\d{2}\)/);
   fireEvent.click(screen.getByRole("button", { name: /Start experiment/ }));
   await waitFor(() => expect(createExperiment).toHaveBeenCalledWith("auth", expect.objectContaining({ workspaceId: "w1", videoIds: ["original1"], maxCredits: expect.any(Number), variantCount: 3, slideCount: 5, idempotencyKey: expect.any(String), instructions: expect.objectContaining({ mode: "controlled", variables: ["hook"], lockedConstraints: [] }) })));
   await waitFor(() => expect(mutateExperiment).toHaveBeenCalledWith("auth", "w1", "e1", "plan", expect.objectContaining({ allowPartial: false, idempotencyKey: expect.any(String) })));
