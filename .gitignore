@@ -12,3 +12,7 @@ dist-ssr
 .env*
 
 .playwright-mcp/
+
+# Impeccable: the engine binary downloads on first run; hooks stay per-machine
+.claude/skills/impeccable/scripts/bin/
+.claude/settings.local.json
