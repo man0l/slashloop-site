@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { T, fD, fB, fM, fmt } from "../lib/theme.js";
-import { SectionLabel, CTAButton, GhostButton } from "../components/ui.jsx";
+import { CTAButton, GhostButton } from "../components/ui.jsx";
 import { track } from "../lib/analytics.js";
 
 const cta = (placement) => () => track("cta_click", { placement });
@@ -27,14 +27,23 @@ function useShowcase() {
   return items;
 }
 
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const Chevron = ({ dir }) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={dir < 0 ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"} />
+  </svg>
+);
+
 function ShowcaseCard({ v }) {
   return (
     <a
       href={v.url}
       target="_blank"
       rel="noreferrer"
-      className="rounded-xl overflow-hidden transition-transform hover:-translate-y-1 shrink-0"
-      style={{ background: T.ink, textDecoration: "none", width: 220, marginRight: 12 }}
+      className="rounded-xl overflow-hidden transition-transform hover:-translate-y-1 focus-visible:-translate-y-1 focus-visible:[outline-offset:-2px] shrink-0"
+      style={{ background: T.ink, textDecoration: "none", width: 220, marginRight: 12, scrollSnapAlign: "start" }}
     >
       <div style={{ aspectRatio: "3/4", overflow: "hidden", background: "#0E1216" }}>
         <img src={v.thumb} alt={`${v.creator}, ${v.caption}`} loading="lazy" className="w-full h-full" style={{ objectFit: "cover", display: "block" }} />
@@ -47,7 +56,7 @@ function ShowcaseCard({ v }) {
           </span>
         </div>
         <div className="truncate" style={{ ...fM, fontSize: 11, color: "#7A828B" }}>{v.caption}</div>
-        <div className="flex items-center justify-between gap-2" style={{ ...fM, fontSize: 10, color: "#5D656E" }}>
+        <div className="flex items-center justify-between gap-2" style={{ ...fM, fontSize: 11, color: "#8A929B" }}>
           <span>{fmt(v.views)} views</span>
           {v.niche ? <span className="truncate">#{String(v.niche).replace(/^[@#]/, "")}</span> : null}
         </div>
@@ -56,41 +65,31 @@ function ShowcaseCard({ v }) {
   );
 }
 
-function LiveCounter() {
-  const [text, setText] = useState("");
-  useEffect(() => {
-    let live = true;
-    fetch(SHOWCASE_URL)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!live || !Array.isArray(d?.items) || !d.items.length) return;
-        const niches = new Set(d.items.map((v) => v.niche).filter(Boolean));
-        setText(`${d.items.length} live outliers across ${niches.size} niche${niches.size === 1 ? "" : "s"} researchers are tracking now`);
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, []);
-  if (!text) return null;
+function LiveCounter({ items }) {
+  if (!items?.length) return null;
+  const niches = new Set(items.map((v) => v.niche).filter(Boolean));
   return (
-    <p className="text-center" style={{ ...fM, fontSize: 12, fontWeight: 600, color: T.signal }}>
-      {text}
+    <p className="flex items-center justify-center gap-2 text-center" style={{ ...fM, fontSize: 12, fontWeight: 600, color: T.ink }}>
+      <span className="rounded-full shrink-0" style={{ width: 7, height: 7, background: T.signal }} aria-hidden="true" />
+      {items.length} live outliers across {niches.size} niche{niches.size === 1 ? "" : "s"} researchers are tracking now
     </p>
   );
 }
 
-function ShowcaseCarousel() {  const items = useShowcase();
+function ShowcaseCarousel({ items }) {
   const trackRef = useRef(null);
   const [page, setPage] = useState(0);
+  const [pages, setPages] = useState(1);
   const paused = useRef(false);
+  const hovering = useRef(false);
 
-  // Auto-advance until the visitor interacts; pages computed from live layout.
+  // Auto-advance until the visitor interacts; hover/focus holds it, and
+  // reduced-motion visitors never get it (WCAG 2.2.2).
   useEffect(() => {
-    if (!items?.length) return;
+    if (!items?.length || prefersReducedMotion()) return;
     const id = setInterval(() => {
       const el = trackRef.current;
-      if (!el || paused.current || document.hidden) return;
+      if (!el || paused.current || hovering.current || document.hidden) return;
       const max = el.scrollWidth - el.clientWidth - 4;
       if (el.scrollLeft >= max) el.scrollTo({ left: 0, behavior: "smooth" });
       else el.scrollBy({ left: Math.min(480, el.clientWidth * 0.8), behavior: "smooth" });
@@ -98,31 +97,48 @@ function ShowcaseCarousel() {  const items = useShowcase();
     return () => clearInterval(id);
   }, [items]);
 
+  // Page dots follow live layout: measured on resize, not read during render.
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    const onScroll = () => {
+    const sync = () => {
+      const count = pageCount(el);
       const max = Math.max(1, el.scrollWidth - el.clientWidth);
-      setPage(Math.round((el.scrollLeft / max) * Math.max(0, pageCount(el) - 1)));
+      setPages(count);
+      setPage(Math.round((el.scrollLeft / max) * Math.max(0, count - 1)));
     };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  });
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sync);
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      ro?.disconnect();
+    };
+  }, [items]);
 
-  if (!items) return null;
-  if (!items.length) return null;
+  if (!items?.length) return null;
   const scrollBy = (dir) => {
     const el = trackRef.current;
     if (!el) return;
     paused.current = true;
-    el.scrollBy({ left: dir * Math.min(480, el.clientWidth * 0.8), behavior: "smooth" });
+    el.scrollBy({ left: dir * Math.min(480, el.clientWidth * 0.8), behavior: prefersReducedMotion() ? "auto" : "smooth" });
   };
+  const arrow = "rounded-full w-10 h-10 flex items-center justify-center transition-colors hover:bg-black/5";
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      role="region"
+      aria-roledescription="carousel"
+      aria-label="Live outliers"
+      onPointerEnter={() => { hovering.current = true; }}
+      onPointerLeave={() => { hovering.current = false; }}
+      onFocus={() => { paused.current = true; }}
+    >
       <div
         ref={trackRef}
-        className="flex overflow-x-auto pb-2"
-        style={{ scrollSnapType: "x mandatory", scrollbarWidth: "thin" }}
+        className="flex overflow-x-auto pt-1 pb-2"
+        style={{ scrollSnapType: "x mandatory", scrollbarWidth: "thin", scrollbarColor: `${T.line} transparent` }}
         onPointerDown={() => {
           paused.current = true;
         }}
@@ -133,19 +149,21 @@ function ShowcaseCarousel() {  const items = useShowcase();
       </div>
       <div className="mt-3 flex items-center justify-center gap-3">
         <button type="button" aria-label="Previous outliers" onClick={() => scrollBy(-1)}
-          className="rounded-full w-9 h-9 flex items-center justify-center"
-          style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>‹</button>
+          className={arrow} style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>
+          <Chevron dir={-1} />
+        </button>
         <div className="flex items-center gap-1.5" aria-hidden="true">
-          {Array.from({ length: pageCount(trackRef.current) }).map((_, i) => (
+          {Array.from({ length: pages }).map((_, i) => (
             <span key={i} className="rounded-full" style={{
-              width: i === page ? 18 : 6, height: 6, transition: "width .25s ease",
+              width: i === page ? 18 : 6, height: 6, transition: "width .25s cubic-bezier(.16,1,.3,1)",
               background: i === page ? T.signal : "#C9CCC5",
             }} />
           ))}
         </div>
         <button type="button" aria-label="Next outliers" onClick={() => scrollBy(1)}
-          className="rounded-full w-9 h-9 flex items-center justify-center"
-          style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>›</button>
+          className={arrow} style={{ background: T.card, color: T.ink, border: `1px solid ${T.line}` }}>
+          <Chevron dir={1} />
+        </button>
       </div>
     </div>
   );
@@ -156,20 +174,33 @@ function pageCount(el) {
   return Math.max(1, Math.ceil(el.scrollWidth / el.clientWidth));
 }
 
+function Showcase() {
+  const items = useShowcase();
+  return (
+    <>
+      <LiveCounter items={items} />
+      <ShowcaseCarousel items={items} />
+    </>
+  );
+}
+
 /* Rotating word: app ↔ saas. Pure CSS, no JS timers. */
 function Rotator() {
   return (
-    <span
-      className="inline-block overflow-hidden align-bottom"
-      style={{ height: "1.12em", verticalAlign: "bottom" }}
-      aria-label="app or saas"
-    >
-      <span className="rotator-inner" style={{ display: "inline-block", color: T.signal }}>
-        <span style={{ display: "block", height: "1.12em", lineHeight: 1.12 }}>app</span>
-        <span style={{ display: "block", height: "1.12em", lineHeight: 1.12 }}>saas</span>
+    <>
+      <span className="sr-only">app</span>
+      <span
+        className="inline-block overflow-hidden align-bottom"
+        style={{ height: "1.12em", verticalAlign: "bottom" }}
+        aria-hidden="true"
+      >
+        <span className="rotator-inner" style={{ display: "inline-block", color: T.signal }}>
+          <span style={{ display: "block", height: "1.12em", lineHeight: 1.12 }}>app</span>
+          <span style={{ display: "block", height: "1.12em", lineHeight: 1.12 }}>saas</span>
+        </span>
+        <style>{`@keyframes rotatorSwap { 0%,42% { transform: translateY(0); } 50%,92% { transform: translateY(-1.12em); } 100% { transform: translateY(0); } } .rotator-inner { animation: rotatorSwap 4.5s cubic-bezier(.16,1,.3,1) infinite; } @media (prefers-reduced-motion: reduce) { .rotator-inner { animation: none; } }`}</style>
       </span>
-      <style>{`@keyframes rotatorSwap { 0%,42% { transform: translateY(0); } 50%,92% { transform: translateY(-1.12em); } 100% { transform: translateY(0); } } .rotator-inner { animation: rotatorSwap 4.5s ease-in-out infinite; }`}</style>
-    </span>
+    </>
   );
 }
 
@@ -213,6 +244,12 @@ function AgenticTerminal() {
   useEffect(() => {
     const el = boxRef.current;
     if (!el || started) return;
+    if (prefersReducedMotion()) {
+      setTyped(TRACK_CMD.length);
+      setRows(TRACK_ROWS.length);
+      setStarted(true);
+      return;
+    }
     // No IntersectionObserver (old browsers, JSDOM tests): start right away.
     if (typeof IntersectionObserver === "undefined") {
       setStarted(true);
@@ -264,7 +301,7 @@ function AgenticTerminal() {
           ))}
         </div>
         {rows >= TRACK_ROWS.length && (
-          <div className="mt-2" style={{ fontSize: 12, color: T.teal, animation: "rowIn .35s ease both" }}>
+          <div className="mt-2" style={{ fontSize: 12, color: "#2BA88F", animation: "rowIn .35s ease both" }}>
             ✓ tracked. nightly refresh + morning briefs, zero scrolling.
           </div>
         )}
@@ -273,7 +310,8 @@ function AgenticTerminal() {
   );
 }
 
-const STEPS = [  {
+const STEPS = [
+  {
     n: "01",
     title: "Track creators & hashtags",
     body: "Point slashloop at the creators and hashtags in your niche. It refreshes on schedule while you build.",
@@ -300,8 +338,7 @@ export default function Home() {
     <>
       {/* Hero */}
       <section className="max-w-5xl mx-auto px-5 pt-12 pb-10 text-center">
-        <SectionLabel>LOOP FOR APP MARKETING</SectionLabel>
-        <h1 className="mt-3 mx-auto" style={{ ...fD, fontWeight: 900, fontSize: "clamp(32px, 5vw, 54px)", lineHeight: 1.08, letterSpacing: -1.5, maxWidth: 800 }}>
+        <h1 className="mx-auto" style={{ ...fD, fontWeight: 900, fontSize: "clamp(32px, 5vw, 54px)", lineHeight: 1.08, letterSpacing: "-0.028em", maxWidth: 800, textWrap: "balance" }}>
           Remake viral TikTok slideshows.
           <br />
           Get paying customers for your <Rotator />.
@@ -320,8 +357,7 @@ export default function Home() {
 
       {/* Live outlier examples */}
       <section className="max-w-5xl mx-auto px-5 pb-14">
-        <LiveCounter />
-        <ShowcaseCarousel />
+        <Showcase />
         <p className="mt-3 text-center" style={{ ...fM, fontSize: 11, color: T.muted }}>
           scores vs each creator's own baseline, refreshed as researchers track more
         </p>
@@ -330,21 +366,25 @@ export default function Home() {
       {/* Process */}
       <section style={{ background: T.ink }}>
         <div className="max-w-5xl mx-auto px-5 py-14">
-          <SectionLabel>THE PROCESS</SectionLabel>
-          <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <h2 style={{ ...fD, fontWeight: 800, fontSize: "clamp(22px,3vw,30px)", letterSpacing: "-0.025em", color: "#fff" }}>
+            How the loop runs
+          </h2>
+          {/* The order is the point, so the steps keep their numbers; a shared
+              hairline reads as one loop instead of four separate cards. */}
+          <ol className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-10">
             {STEPS.map((s) => (
-              <div key={s.n} className="rounded-xl p-5" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <li key={s.n} className="pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.14)" }}>
                 <div style={{ ...fM, fontSize: 12, fontWeight: 700, color: T.signal }}>{s.n}</div>
-                <div className="mt-1.5" style={{ ...fD, fontSize: 16, fontWeight: 800, color: "#fff" }}>{s.title}</div>
-                <p className="mt-2" style={{ fontSize: 13.5, lineHeight: 1.6, color: "#B8BEC5" }}>{s.body}</p>
-              </div>
+                <h3 className="mt-2" style={{ ...fD, fontSize: 17, fontWeight: 800, color: "#fff" }}>{s.title}</h3>
+                <p className="mt-2" style={{ fontSize: 14, lineHeight: 1.6, color: "#B8BEC5" }}>{s.body}</p>
+              </li>
             ))}
-          </div>
-          <div className="mt-8 flex items-start justify-center gap-6" aria-label="Post to TikTok, Instagram, YouTube and Threads">
+          </ol>
+          <div className="mt-12 flex items-start justify-center gap-6" role="img" aria-label="Post to TikTok, Instagram, YouTube and Threads">
             {PLATFORMS.map(({ label, Icon }) => (
-              <span key={label} className="flex flex-col items-center gap-1.5" style={{ color: "#7A828B" }}>
+              <span key={label} className="flex flex-col items-center gap-1.5" style={{ color: "#8A929B" }}>
                 <Icon />
-                <span style={{ ...fM, fontSize: 10 }}>{label}</span>
+                <span style={{ ...fM, fontSize: 11 }}>{label}</span>
               </span>
             ))}
           </div>
@@ -354,13 +394,12 @@ export default function Home() {
       {/* Agentic first */}
       <section className="max-w-5xl mx-auto px-5 py-14 grid lg:grid-cols-2 gap-10 items-center">
         <div>
-          <SectionLabel>AGENTIC FIRST</SectionLabel>
-          <h2 className="mt-3" style={{ ...fD, fontWeight: 800, fontSize: "clamp(24px,3.5vw,34px)", letterSpacing: -0.8 }}>
-            Your coding agent hunts outliers <span style={{ color: T.signal }}>while you sleep</span>
+          <h2 style={{ ...fD, fontWeight: 800, fontSize: "clamp(24px,3.5vw,34px)", letterSpacing: "-0.025em", textWrap: "balance" }}>
+            Your coding agent hunts outliers <span style={{ color: T.signalText }}>while you sleep</span>
           </h2>
           <p className="mt-4" style={{ fontSize: 15, lineHeight: 1.65, color: "#3A424B" }}>
             Slashloop is an MCP server plus a Claude Code skill. Track, scan, brief and
-            schedule without opening a tab. Three copy-paste prompts and your agent is onboarded. <a href="/agent-setup" style={{ color: T.signal, fontWeight: 600 }}>Agent setup</a>.
+            schedule without opening a tab. Three copy-paste prompts and your agent is onboarded. <a href="/agent-setup" className="underline underline-offset-4" style={{ color: T.signalText, fontWeight: 600 }}>Agent setup</a>.
           </p>
         </div>
         <AgenticTerminal />
@@ -368,8 +407,7 @@ export default function Home() {
 
       {/* FAQ */}
       <section className="max-w-3xl mx-auto px-5 pb-16">
-        <SectionLabel>QUESTIONS</SectionLabel>
-        <h2 className="mt-3" style={{ fontWeight: 800, fontSize: "clamp(22px,3vw,30px)", letterSpacing: -0.8 }}>
+        <h2 style={{ ...fD, fontWeight: 800, fontSize: "clamp(22px,3vw,30px)", letterSpacing: "-0.025em" }}>
           Asked before you ask
         </h2>
         <div className="mt-5 flex flex-col gap-2.5">
@@ -382,9 +420,14 @@ export default function Home() {
             ["What does it cost?", "Start free: 300 credits ($3.00) a month, no card. Credits are worth $0.01 each. Paid plans add credits and workspaces; one-off credit packs never expire. Every scrape and analysis shows its cost before and after, so there are no surprise bills."],
             ["How does the agent part work?", "Slashloop is an MCP server with a Claude Code skill. Your agent tracks niches, scans nightly, drafts briefs, and queues posts while you sleep. Three copy-paste prompts onboard it: see Agent setup."],
           ].map(([q, a]) => (
-            <details key={q} className="rounded-xl px-5 py-4" style={{ background: T.card, border: "1px solid " + T.line }}>
-              <summary style={{ fontWeight: 700, fontSize: 15, cursor: "pointer" }}>{q}</summary>
-              <p className="mt-2" style={{ fontSize: 14, lineHeight: 1.65, color: "#3A424B" }}>{a}</p>
+            <details key={q} className="group rounded-xl" style={{ background: T.card, border: "1px solid " + T.line }}>
+              <summary className="flex items-center justify-between gap-4 px-5 py-4 list-none rounded-xl [&::-webkit-details-marker]:hidden" style={{ fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+                {q}
+                <svg className="shrink-0 transition-transform duration-200 group-open:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: T.muted }}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p className="px-5 pb-4" style={{ fontSize: 14, lineHeight: 1.65, color: "#3A424B", maxWidth: "68ch" }}>{a}</p>
             </details>
           ))}
         </div>
@@ -392,8 +435,8 @@ export default function Home() {
 
       {/* Final CTA */}
       <section className="max-w-5xl mx-auto px-5 py-16 text-center">
-        <h2 style={{ ...fD, fontWeight: 900, fontSize: "clamp(26px,4vw,38px)", letterSpacing: -1 }}>
-          Your next post is already viral. <span style={{ color: T.signal }}>Someone else made it.</span>
+        <h2 className="mx-auto" style={{ ...fD, fontWeight: 900, fontSize: "clamp(26px,4vw,38px)", letterSpacing: "-0.026em", maxWidth: 760, textWrap: "balance" }}>
+          Your next post is already viral. <span style={{ color: T.signalText }}>Someone else made it.</span>
         </h2>
         <div className="mt-6 flex justify-center">
           <CTAButton big to="/login" onClick={cta("final_cta")}>Start free →</CTAButton>

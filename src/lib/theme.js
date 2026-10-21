@@ -5,8 +5,12 @@ export const T = {
   paper: "#F1F2EF",
   card: "#FFFFFF",
   signal: "#FF4D00",
+  // Signal tuned for text on paper: brand orange is 2.96:1 there, this is
+  // 3.8:1 (large-text AA). Fills and badges keep `signal`.
+  signalText: "#D9480F",
   teal: "#0F7B6C",
-  muted: "#6E7681",
+  // 5.2:1 on paper (was #6E7681 at 4.1:1, under AA for the small fine print).
+  muted: "#5E666F",
   line: "#E2E4DF",
 };
 
@@ -16,6 +20,8 @@ export const T = {
 export const FONTS = `
 @keyframes blink { 0%,49% {opacity:1} 50%,100% {opacity:0} }
 @keyframes rowIn { from {opacity:0; transform:translateY(6px)} to {opacity:1; transform:none} }
+::selection { background: rgba(255,77,0,0.2); color: #14181D; }
+:focus-visible { outline: 2px solid #FF4D00; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
